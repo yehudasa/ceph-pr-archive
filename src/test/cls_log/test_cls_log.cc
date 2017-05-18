@@ -105,7 +105,7 @@ void check_entry(cls_log_entry& entry, utime_t& start_time, int i, bool modified
 }
 
 
-TEST(cls_rgw, test_log_add_same_time)
+TEST(cls_log, test_log_add_same_time)
 {
   librados::Rados rados;
   librados::IoCtx ioctx;
@@ -192,7 +192,7 @@ TEST(cls_rgw, test_log_add_same_time)
   ASSERT_EQ(0, destroy_one_pool_pp(pool_name, rados));
 }
 
-TEST(cls_rgw, test_log_add_different_time)
+TEST(cls_log, test_log_add_different_time)
 {
   librados::Rados rados;
   librados::IoCtx ioctx;
@@ -288,7 +288,7 @@ TEST(cls_rgw, test_log_add_different_time)
   ASSERT_EQ(0, destroy_one_pool_pp(pool_name, rados));
 }
 
-TEST(cls_rgw, test_log_trim)
+TEST(cls_log, test_log_trim)
 {
   librados::Rados rados;
   librados::IoCtx ioctx;

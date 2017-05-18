@@ -61,23 +61,11 @@ void cls_log_trim(librados::ObjectWriteOperation& op, const utime_t& from_time, 
 int cls_log_trim(librados::IoCtx& io_ctx, const string& oid, const utime_t& from_time, const utime_t& to_time,
                  const string& from_marker, const string& to_marker)
 {
-  bool done = false;
+  ObjectWriteOperation op;
 
-  do {
-    ObjectWriteOperation op;
+  cls_log_trim(op, from_time, to_time, from_marker, to_marker);
 
-    cls_log_trim(op, from_time, to_time, from_marker, to_marker);
-
-    int r = io_ctx.operate(oid, &op);
-    if (r == -ENODATA)
-      done = true;
-    else if (r < 0)
-      return r;
-
-  } while (!done);
-
-
-  return 0;
+  return io_ctx.operate(oid, &op);
 }
 
 class LogListCtx : public ObjectOperationCompletion {

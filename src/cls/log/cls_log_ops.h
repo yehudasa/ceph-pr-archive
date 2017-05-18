@@ -84,11 +84,6 @@ struct cls_log_list_ret {
 };
 WRITE_CLASS_ENCODER(cls_log_list_ret)
 
-
-/*
- * operation will return 0 when successfully removed but not done. Will return
- * -ENODATA when done, so caller needs to repeat sending request until that.
- */
 struct cls_log_trim_op {
   utime_t from_time;
   utime_t to_time; /* inclusive */
