@@ -372,6 +372,9 @@ void generate_transaction(
 	case UpdateType::Insert:
 	  t->omap_setkeys(coll, goid, up.second);
 	  break;
+	case UpdateType::RemoveRange:
+	  t->omap_rmkeyrange(coll, goid, up.second);
+	  break;
 	}
       }
 
