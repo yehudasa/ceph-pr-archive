@@ -412,9 +412,6 @@ class CLSRGWIssueBILogTrim : public CLSRGWConcurrentIO {
   BucketIndexShardsManager& end_marker_mgr;
 protected:
   int issue_op(int shard_id, const string& oid) override;
-  // Trim until -ENODATA is returned.
-  int valid_ret_code() override { return -ENODATA; }
-  bool need_multiple_rounds() override { return true; }
   void add_object(int shard, const string& oid) override { objs_container[shard] = oid; }
   void reset_container(map<int, string>& objs) override {
     objs_container.swap(objs);
