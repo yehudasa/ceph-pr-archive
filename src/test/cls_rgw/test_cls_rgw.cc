@@ -89,6 +89,15 @@ void index_complete(librados::IoCtx& ioctx, string& oid, RGWModifyOp index_op,
   meta.accounted_size = meta.size;
   cls_rgw_bucket_complete_op(op, index_op, tag, ver, key, meta, nullptr, true, bi_flags, nullptr);
   ASSERT_EQ(0, ioctx.operate(oid, &op));
+  if (!key.instance.empty()) {
+    bufferlist olh_tag;
+    olh_tag.append(tag);
+    ObjectWriteOperation op2;
+    rgw_zone_set zone_set;
+    ASSERT_EQ(0, cls_rgw_bucket_link_olh(ioctx, op2, oid, key, olh_tag,
+                                         false, tag, &meta, epoch,
+                                         ceph::real_time{}, true, true, zone_set));
+  }
 }
 
 TEST_F(cls_rgw, index_basic)
@@ -850,5 +859,115 @@ TEST_F(cls_rgw, usage_clear)
 			       max_entries, read_iter, usage, &truncated);
   ASSERT_EQ(0, ret);
   ASSERT_EQ(0u, usage.size());
+}
 
+static int bilog_list(librados::IoCtx& ioctx, const std::string& oid,
+                      cls_rgw_bi_log_list_ret *result)
+{
+  BucketIndexShardsManager mgr;
+  mgr.add(0, "");
+  std::map<int, std::string> oids = {{0, oid}};
+  std::map<int, cls_rgw_bi_log_list_ret> bilogs;
+  CLSRGWIssueBILogList bilog_list{ioctx, mgr, 128, oids, bilogs, 1};
+  int r = bilog_list();
+  if (r == 0) {
+    *result = std::move(bilogs[0]);
+  }
+  return r;
+}
+
+static int bilog_trim(librados::IoCtx& ioctx, const std::string& oid,
+                      const std::string& start_marker,
+                      const std::string& end_marker)
+{
+  BucketIndexShardsManager start_mgr, end_mgr;
+  start_mgr.add(0, start_marker);
+  end_mgr.add(0, end_marker);
+  std::map<int, std::string> oids = {{0, oid}};
+  CLSRGWIssueBILogTrim bilog_trim{ioctx, start_mgr, end_mgr, oids, 1};
+  return bilog_trim();
+}
+
+TEST_F(cls_rgw, bi_log_trim)
+{
+  string bucket_oid = str_int("bucket", 6);
+
+  ObjectWriteOperation op;
+  cls_rgw_bucket_init(op);
+  ASSERT_EQ(0, ioctx.operate(bucket_oid, &op));
+
+  // create 10 versioned entries. this generates instance and olh bi entries,
+  // allowing us to check that bilog trim doesn't remove any of those
+  for (int i = 0; i < 10; i++) {
+    cls_rgw_obj_key obj{str_int("obj", i), "inst"};
+    string tag = str_int("tag", i);
+    string loc = str_int("loc", i);
+
+    index_prepare(ioctx, bucket_oid, CLS_RGW_OP_ADD, tag, obj, loc);
+    rgw_bucket_dir_entry_meta meta;
+    index_complete(ioctx, bucket_oid, CLS_RGW_OP_ADD, tag, 1, obj, meta);
+  }
+  // bi list
+  {
+    list<rgw_cls_bi_entry> entries;
+    bool truncated{false};
+    ASSERT_EQ(0, cls_rgw_bi_list(ioctx, bucket_oid, "", "", 128,
+                                 &entries, &truncated));
+    // prepare/complete/instance/olh entry for each
+    EXPECT_EQ(40u, entries.size());
+    EXPECT_FALSE(truncated);
+  }
+  // bilog list
+  vector<rgw_bi_log_entry> bilog1;
+  {
+    cls_rgw_bi_log_list_ret bilog;
+    ASSERT_EQ(0, bilog_list(ioctx, bucket_oid, &bilog));
+    // prepare/complete/olh entry for each
+    EXPECT_EQ(30u, bilog.entries.size());
+
+    bilog1.assign(std::make_move_iterator(bilog.entries.begin()),
+                  std::make_move_iterator(bilog.entries.end()));
+  }
+  // trim front of bilog
+  {
+    const auto& first_marker = bilog1[0].id;
+    ASSERT_EQ(0, bilog_trim(ioctx, bucket_oid, "", first_marker));
+    cls_rgw_bi_log_list_ret bilog;
+    ASSERT_EQ(0, bilog_list(ioctx, bucket_oid, &bilog));
+    EXPECT_EQ(29u, bilog.entries.size());
+    EXPECT_EQ(bilog1[1].id, bilog.entries.begin()->id);
+  }
+  // trim back of bilog
+  {
+    const auto& last_marker = bilog1[29].id;
+    ASSERT_EQ(0, bilog_trim(ioctx, bucket_oid, last_marker, ""));
+    cls_rgw_bi_log_list_ret bilog;
+    ASSERT_EQ(0, bilog_list(ioctx, bucket_oid, &bilog));
+    EXPECT_EQ(28u, bilog.entries.size());
+    EXPECT_EQ(bilog1[28].id, bilog.entries.rbegin()->id);
+  }
+  // trim middle of bilog
+  {
+    const auto& marker = bilog1[14].id;
+    ASSERT_EQ(0, bilog_trim(ioctx, bucket_oid, marker, marker));
+    cls_rgw_bi_log_list_ret bilog;
+    ASSERT_EQ(0, bilog_list(ioctx, bucket_oid, &bilog));
+    EXPECT_EQ(27u, bilog.entries.size());
+  }
+  // trim full bilog
+  {
+    ASSERT_EQ(0, bilog_trim(ioctx, bucket_oid, "", ""));
+    cls_rgw_bi_log_list_ret bilog;
+    ASSERT_EQ(0, bilog_list(ioctx, bucket_oid, &bilog));
+    EXPECT_EQ(0u, bilog.entries.size());
+  }
+  // bi list should be the same
+  {
+    list<rgw_cls_bi_entry> entries;
+    bool truncated{false};
+    ASSERT_EQ(0, cls_rgw_bi_list(ioctx, bucket_oid, "", "", 128,
+                                 &entries, &truncated));
+    EXPECT_EQ(40u, entries.size());
+    EXPECT_FALSE(truncated);
+  }
 }
