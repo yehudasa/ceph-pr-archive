@@ -5918,6 +5918,16 @@ extern "C" void rados_write_op_omap_rm_keys2(rados_write_op_t write_op,
   tracepoint(librados, rados_write_op_omap_rm_keys_exit);
 }
 
+extern "C" void rados_write_op_omap_rm_range(rados_write_op_t write_op,
+                                             const char *key_begin,
+                                             const char *key_end)
+{
+  tracepoint(librados, rados_write_op_omap_rm_range_enter,
+             write_op, key_begin, key_end);
+  ((::ObjectOperation *)write_op)->omap_rm_range(key_begin, key_end);
+  tracepoint(librados, rados_write_op_omap_rm_range_exit);
+}
+
 extern "C" void rados_write_op_omap_clear(rados_write_op_t write_op)
 {
   tracepoint(librados, rados_write_op_omap_clear_enter, write_op);

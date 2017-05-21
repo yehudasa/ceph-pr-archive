@@ -3103,6 +3103,19 @@ CEPH_RADOS_API void rados_write_op_omap_rm_keys2(rados_write_op_t write_op,
                                                 const size_t* key_lens,
                                                 size_t keys_len);
 
+
+/**
+ * Remove key/value pairs from an object whose keys are in the range
+ * [key_begin, key_end)
+ *
+ * @param write_op operation to add this action to
+ * @param key_begin the lower bound of the key range to remove
+ * @param key_end the upper bound of the key range to remove
+ */
+CEPH_RADOS_API void rados_write_op_omap_rm_range(rados_write_op_t write_op,
+                                                 const char *key_begin,
+                                                 const char *key_end);
+
 /**
  * Remove all key/value pairs from an object
  *
