@@ -131,6 +131,14 @@ static int log_list(librados::IoCtx& ioctx, const std::string& oid,
                   entries, &marker, truncated);
 }
 
+static int log_list(librados::IoCtx& ioctx, const std::string& oid,
+                    list<cls_log_entry>& entries)
+{
+  utime_t from, to;
+  bool truncated{false};
+  return log_list(ioctx, oid, from, to, 0, entries, &truncated);
+}
+
 TEST_F(cls_log, test_log_add_same_time)
 {
   /* add chains */
@@ -261,7 +269,7 @@ TEST_F(cls_log, test_log_add_different_time)
   ASSERT_EQ(10, i);
 }
 
-TEST_F(cls_log, test_log_trim)
+TEST_F(cls_log, trim_by_time)
 {
   /* add chains */
   string oid = "obj";
@@ -293,5 +301,65 @@ TEST_F(cls_log, test_log_trim)
                           entries, &truncated));
     ASSERT_EQ(9u - i, entries.size());
     ASSERT_FALSE(truncated);
+  }
+}
+
+TEST_F(cls_log, trim_by_marker)
+{
+  string oid = "obj";
+  ASSERT_EQ(0, ioctx.create(oid, true));
+
+  // generate log with the same timestamp for each entry
+  utime_t start_time = ceph_clock_now();
+  constexpr bool modify_time = false;
+  generate_log(ioctx, oid, 10, start_time, modify_time);
+
+  utime_t end_time = start_time + utime_t{5, 0};
+  utime_t zero_time;
+  std::vector<cls_log_entry> log1;
+  {
+    list<cls_log_entry> entries;
+    ASSERT_EQ(0, log_list(ioctx, oid, entries));
+    ASSERT_EQ(10u, entries.size());
+
+    log1.assign(std::make_move_iterator(entries.begin()),
+                std::make_move_iterator(entries.end()));
+
+  }
+  // trim front of log
+  {
+    const auto& first_marker = log1.front().id;
+    ASSERT_EQ(0, cls_log_trim(ioctx, oid, zero_time, zero_time,
+                              "", first_marker));
+    list<cls_log_entry> entries;
+    ASSERT_EQ(0, log_list(ioctx, oid, entries));
+    ASSERT_EQ(9u, entries.size());
+    EXPECT_EQ(log1[1].id, entries.begin()->id);
+  }
+  // trim back of log
+  {
+    const auto& last_marker = log1.back().id;
+    ASSERT_EQ(0, cls_log_trim(ioctx, oid, zero_time, end_time,
+                              last_marker, ""));
+    list<cls_log_entry> entries;
+    ASSERT_EQ(0, log_list(ioctx, oid, entries));
+    EXPECT_EQ(8u, entries.size());
+    EXPECT_EQ(log1[8].id, entries.rbegin()->id);
+  }
+  // trim middle of log
+  {
+    const auto& marker = log1[4].id;
+    ASSERT_EQ(0, cls_log_trim(ioctx, oid, zero_time, zero_time,
+                              marker, marker));
+    list<cls_log_entry> entries;
+    ASSERT_EQ(0, log_list(ioctx, oid, entries));
+    EXPECT_EQ(7u, entries.size());
+  }
+  // trim full log
+  {
+    ASSERT_EQ(0, cls_log_trim(ioctx, oid, start_time, start_time, "", ""));
+    list<cls_log_entry> entries;
+    ASSERT_EQ(0, log_list(ioctx, oid, entries));
+    EXPECT_EQ(0u, entries.size());
   }
 }
