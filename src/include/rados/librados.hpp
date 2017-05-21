@@ -420,6 +420,15 @@ namespace librados
     void omap_rm_keys(const std::set<std::string> &to_rm);
 
     /**
+     * Clears keys in the range [key_begin, key_end)
+     *
+     * @param key_begin [in] lower bound of key range to remove
+     * @param key_end [in] upper bound of key range to remove
+     */
+    void omap_rm_range(const std::string& key_begin,
+                       const std::string& key_end);
+
+    /**
      * Copy an object
      *
      * Copies an object from another location.  The operation is atomic in that
@@ -839,6 +848,9 @@ namespace librados
     int omap_clear(const std::string& oid);
     int omap_rm_keys(const std::string& oid,
                      const std::set<std::string>& keys);
+    int omap_rm_range(const std::string& oid,
+                      const std::string& key_begin,
+                      const std::string& key_end);
 
     void snap_set_read(snap_t seq);
     int selfmanaged_snap_set_write_ctx(snap_t seq, std::vector<snap_t>& snaps);
