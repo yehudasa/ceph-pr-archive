@@ -21,8 +21,10 @@
 #include "MonMap.h"
 #include "MonSub.h"
 
+#include "common/async/completion.h"
 #include "common/Timer.h"
 #include "common/config.h"
+#include "messages/MMonGetVersion.h"
 
 class MMonMap;
 class MConfig;
@@ -39,7 +41,6 @@ class KeyRing;
 class RotatingKeyRing;
 
 struct MonClientPinger : public Dispatcher {
-
   Mutex lock;
   Cond ping_recvd_cond;
   string *result;
@@ -145,13 +146,16 @@ private:
 
 class MonClient : public Dispatcher {
 public:
+  // Error, Newest, Oldest
+  using VersionSig = void(boost::system::error_code, version_t, version_t);
+  using VersionCompletion = ceph::async::Completion<VersionSig>;
+
   MonMap monmap;
   map<string,string> config_mgr;
 private:
   Messenger *messenger;
 
-  std::unique_ptr<MonConnection> active_con;
-  std::map<entity_addr_t, MonConnection> pending_cons;
+  std::unique_ptr<MonConnection> active_con; std::map<entity_addr_t, MonConnection> pending_cons;
 
   EntityName entity_name;
 
@@ -420,12 +424,25 @@ public:
    * get latest known version(s) of cluster map
    *
    * @param map string name of map (e.g., 'osdmap')
-   * @param newest pointer where newest map version will be stored
-   * @param oldest pointer where oldest map version will be stored
-   * @param onfinish context that will be triggered on completion
-   * @return (via context) 0 on success, -EAGAIN if we need to resubmit our request
+   * @param token context that will be triggered on completion
+   * @return (via Completion) {} on success,
+   *         boost::system::errc::resource_unavailable_try_again if we need to
+   *         resubmit our request
    */
-  void get_version(string map, version_t *newest, version_t *oldest, Context *onfinish);
+  template<typename CompletionToken>
+  auto get_version(string&& map, CompletionToken&& token) {
+    std::lock_guard l(monc_lock);
+    MMonGetVersion *m = new MMonGetVersion();
+    m->what = std::move(map);
+    m->handle = ++version_req_id;
+    boost::asio::async_completion<CompletionToken, VersionSig> init(token);
+    version_requests.emplace(m->handle,
+			     VersionCompletion::create(service.get_executor(),
+						       std::move(init.completion_handler)));
+    _send_mon_message(m);
+    return init.result.get();
+  }
+
   /**
    * Run a callback within our lock, with a reference
    * to the MonMap
@@ -441,17 +458,44 @@ public:
   md_config_t::config_callback get_config_callback();
 
 private:
-  struct version_req_d {
-    Context *context;
-    version_t *newest, *oldest;
-    version_req_d(Context *con, version_t *n, version_t *o) : context(con),newest(n), oldest(o) {}
-  };
 
-  map<ceph_tid_t, version_req_d*> version_requests;
+  std::map<ceph_tid_t, std::unique_ptr<VersionCompletion>> version_requests;
   ceph_tid_t version_req_id;
   void handle_get_version_reply(MMonGetVersionReply* m);
-
   md_config_t::config_callback config_cb;
 };
+
+const boost::system::error_category& monc_category() noexcept;
+
+namespace monc_errc {
+enum monc_errc_t {
+  shutting_down = 1, // Command failed due to MonClient shutting down
+  session_reset // Monitor session was reset
+};
+}
+
+namespace boost {
+namespace system {
+template<>
+struct is_error_code_enum<::monc_errc::monc_errc_t> {
+  static const bool value = true;
+};
+}
+}
+
+namespace monc_errc {
+//  explicit conversion:
+inline boost::system::error_code make_error_code(monc_errc_t e) noexcept {
+  return { e, monc_category() };
+}
+
+// implicit conversion:
+inline boost::system::error_condition make_error_condition(monc_errc_t e)
+  noexcept {
+  return { e, monc_category() };
+}
+}
+
+const boost::system::error_category& monc_category() noexcept;
 
 #endif
