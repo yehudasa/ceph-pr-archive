@@ -62,6 +62,28 @@ configure how this migration takes place. There are two main scenarios:
   allows the workload to function properly while the cache is drained,
   without adding any new objects to the cache.
 
+Other cache modes are:
+
+- **Read-only** promotes objects to the cache on read operations only; write
+  operations are forwarded to the base tier. When objects are updated in the
+  base tier, Ceph makes no attempt to sync these updates to the corresponding
+  objects in the cache. This mode is intended for read-only workloads that do
+  not require consistency to be enforced by the storage system.
+
+- **Read-forward** does not promote objects from the base tier on read.
+  In other words, read requests that miss in the cache are forwarded to the
+  base tier. Write operations on the cache are accepted and flushed to the base
+  tier. This mode is useful when the base and cache tiers are comparably fast
+  for reads, but there is asymmetric performance or endurance for writes.
+
+- **Forward** processes all requests (reads and writes) in the cache tier if it
+  exists in the cache and forwards anything else to the base tier. In this
+  mode, no new objects will ever be promoted to the cache pool. The intended
+  use case is draining the cache in preparation for turning it off.
+
+- **None** is used to completely disable caching.
+
+
 A word of caution
 =================
 
