@@ -899,7 +899,10 @@ namespace buffer CEPH_BUFFER_API {
     void append(const list& bl);
     void append(std::istream& in);
     void append_zero(unsigned len);
+    void append_zero_precalc_crc(unsigned len, unsigned crc);
     void prepend_zero(unsigned len);
+    void append_zero_static(unsigned len);
+    void append_zero_static_precalc_crc(unsigned len, unsigned crc);
     
     /*
      * get a char
