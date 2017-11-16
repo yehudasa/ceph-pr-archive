@@ -781,7 +781,7 @@ int RGWBucket::init(RGWRados *storage, RGWBucketAdminOpState& op_state)
     return -EINVAL;
 
   if (!bucket_name.empty()) {
-    int r = store->get_bucket_info(obj_ctx, tenant, bucket_name, bucket_info, NULL);
+    int r = store->get_bucket_info(obj_ctx, tenant, bucket_name, bucket_info, &attrs);
     if (r < 0) {
       ldout(store->ctx(), 0) << "could not get bucket info for bucket=" << bucket_name << dendl;
       return r;
@@ -1191,6 +1191,53 @@ int RGWBucket::check_index(RGWBucketAdminOpState& op_state,
   return 0;
 }
 
+int RGWBucket::sync(RGWBucketAdminOpState& op_state, std::string *err_msg)
+{
+  if (!store->is_meta_master()) {
+    set_err_msg(err_msg, "ERROR: failed to update bucket sync: only allowed on meta master zone");
+    return EINVAL;
+  }
+  bool sync = op_state.will_sync_bucket();
+  if (sync) {
+    bucket_info.flags &= ~BUCKET_DATASYNC_DISABLED;
+  } else {
+    bucket_info.flags |= BUCKET_DATASYNC_DISABLED;
+  }
+
+  int r = store->put_bucket_instance_info(bucket_info, false, real_time(), &attrs);
+  if (r < 0) {
+    set_err_msg(err_msg, "ERROR: failed writing bucket instance info:" + cpp_strerror(-r));
+    return r;
+  }
+
+  int shards_num = bucket_info.num_shards? bucket_info.num_shards : 1;
+  int shard_id = bucket_info.num_shards? 0 : -1;
+
+  if (!sync) {
+    r = store->stop_bi_log_entries(bucket_info, -1);
+    if (r < 0) {
+      set_err_msg(err_msg, "ERROR: failed writing stop bilog:" + cpp_strerror(-r));
+      return r;
+    }
+  } else {
+    r = store->resync_bi_log_entries(bucket_info, -1);
+    if (r < 0) {
+      set_err_msg(err_msg, "ERROR: failed writing resync bilog:" + cpp_strerror(-r));
+      return r;
+    }
+  }
+
+  for (int i = 0; i < shards_num; ++i, ++shard_id) {
+    r = store->data_log->add_entry(bucket_info.bucket, shard_id);
+    if (r < 0) {
+      set_err_msg(err_msg, "ERROR: failed writing data log:" + cpp_strerror(-r));
+      return r;
+    }
+  }
+
+  return 0;
+}
+
 
 int RGWBucket::policy_bl_to_stream(bufferlist& bl, ostream& o)
 {
@@ -1393,6 +1440,17 @@ int RGWBucketAdminOp::remove_object(RGWRados *store, RGWBucketAdminOpState& op_s
     return ret;
 
   return bucket.remove_object(op_state);
+}
+
+int RGWBucketAdminOp::sync_bucket(RGWRados *store, RGWBucketAdminOpState& op_state, string *err_msg)
+{
+  RGWBucket bucket;
+  int ret = bucket.init(store, op_state);
+  if (ret < 0)
+  {
+    return ret;
+  }
+  return bucket.sync(op_state, err_msg);
 }
 
 static int bucket_stats(RGWRados *store, const std::string& tenant_name, std::string&  bucket_name, Formatter *formatter)
