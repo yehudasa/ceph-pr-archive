@@ -9194,9 +9194,7 @@ int Client::_read_sync(Fh *f, uint64_t off, uint64_t len, bufferlist *bl,
 	int64_t some = in->size - pos;
 	if (some > left)
 	  some = left;
-	bufferptr z(some);
-	z.zero();
-	bl->push_back(z);
+	bl->append_zero(some);
 	read += some;
 	pos += some;
 	left -= some;
