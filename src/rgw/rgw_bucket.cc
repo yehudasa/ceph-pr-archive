@@ -781,7 +781,7 @@ int RGWBucket::init(RGWRados *storage, RGWBucketAdminOpState& op_state)
     return -EINVAL;
 
   if (!bucket_name.empty()) {
-    int r = store->get_bucket_info(obj_ctx, tenant, bucket_name, bucket_info, &attrs);
+    int r = store->get_bucket_info(obj_ctx, tenant, bucket_name, bucket_info, nullptr, &attrs);
     if (r < 0) {
       ldout(store->ctx(), 0) << "could not get bucket info for bucket=" << bucket_name << dendl;
       return r;
