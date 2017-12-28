@@ -621,7 +621,7 @@ add_subdirectory(client)
 if(WITH_LIBCEPHFS)
   set(libcephfs_srcs libcephfs.cc)
   add_library(cephfs ${CEPH_SHARED} ${libcephfs_srcs})
-  target_link_libraries(cephfs PRIVATE client ceph-common
+  target_link_libraries(cephfs PUBLIC ${ALLOC_LIBS} PRIVATE client ceph-common
     ${CRYPTO_LIBS} ${EXTRALIBS})
   if(ENABLE_SHARED)
     set_target_properties(cephfs PROPERTIES

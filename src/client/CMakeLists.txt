@@ -9,5 +9,7 @@ set(libclient_srcs
   Trace.cc
   posix_acl.cc
   Delegation.cc)
-add_library(client STATIC ${libclient_srcs})
-target_link_libraries(client osdc)
+add_library(client STATIC 
+    ${libclient_srcs}
+    $<TARGET_OBJECTS:heap_profiler_objs>)
+target_link_libraries(client osdc ${ALLOC_LIBS})
