@@ -687,9 +687,22 @@ OSDMonitor::update_pending_pgs(const OSDMap::Incremental& inc)
     pending_creatings.last_scan_epoch = osdmap.get_epoch();
   }
 
+  // process new pg_temp
+  auto total = pending_creatings.pgs.size();
+  // assuming the number of primed pgs cannot overload the cluster
+  for (auto& pg_temp : inc.new_pg_temp) {
+    pending_creatings.pgs.emplace(pg_temp.first,
+				  make_pair(inc.epoch,
+					    inc.modified));
+  }
+  dout(10) << __func__
+	   << " " << (pending_creatings.pgs.size() - total)
+	   << "/" << pending_creatings.pgs.size()
+	   << " pgs added from pg temp" << dendl;
+
+  total = pending_creatings.pgs.size();
   // process queue
   unsigned max = std::max<int64_t>(1, g_conf->mon_osd_max_creating_pgs);
-  const auto total = pending_creatings.pgs.size();
   while (pending_creatings.pgs.size() < max &&
 	 !pending_creatings.queue.empty()) {
     auto p = pending_creatings.queue.begin();
