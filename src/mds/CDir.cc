@@ -2484,6 +2484,7 @@ void CDir::_committed(int r, version_t v)
 
 void CDir::encode_export(bufferlist& bl)
 {
+  ENCODE_START(1, 1, bl);
   assert(!is_projected());
   encode(first, bl);
   encode(fnode, bl);
@@ -2500,6 +2501,7 @@ void CDir::encode_export(bufferlist& bl)
   encode(get_replicas(), bl);
 
   get(PIN_TEMPEXPORTING);
+  ENCODE_FINISH(bl);
 }
 
 void CDir::finish_export()
@@ -2515,6 +2517,7 @@ void CDir::finish_export()
 
 void CDir::decode_import(bufferlist::const_iterator& blp, LogSegment *ls)
 {
+  DECODE_START(1, blp);
   decode(first, blp);
   decode(fnode, blp);
   decode(dirty_old_rstat, blp);
@@ -2565,6 +2568,7 @@ void CDir::decode_import(bufferlist::const_iterator& blp, LogSegment *ls)
       ls->dirty_dirfrag_dirfragtree.push_back(&inode->item_dirty_dirfrag_dirfragtree);
     }
   }
+  DECODE_FINISH(blp);
 }
 
 void CDir::abort_import()
