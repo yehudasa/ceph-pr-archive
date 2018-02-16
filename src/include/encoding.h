@@ -17,6 +17,7 @@
 #include <set>
 #include <map>
 #include <deque>
+#include <optional>
 #include <vector>
 #include <string>
 #include <string_view>
@@ -331,6 +332,10 @@ void decode(std::chrono::duration<Rep, Period>& d,
 // STL container types
 
 template<typename T>
+inline void encode(const std::optional<T> &p, bufferlist &bl);
+template<typename T>
+inline void decode(std::optional<T> &p, bufferlist::iterator &bp);
+template<typename T>
 inline void encode(const boost::optional<T> &p, bufferlist &bl);
 template<typename T>
 inline void decode(boost::optional<T> &p, bufferlist::const_iterator &bp);
@@ -521,6 +526,28 @@ inline void decode(T &o, const bufferlist& bl)
   auto p = bl.begin();
   decode(o, p);
   ceph_assert(p.end());
+}
+
+template<typename T>
+inline void encode(const std::optional<T> &p, bufferlist &bl)
+{
+  __u8 present = static_cast<bool>(p);
+  encode(present, bl);
+  if (p)
+    encode(*p, bl);
+}
+
+template<typename T>
+inline void decode(std::optional<T> &p, bufferlist::const_iterator &bp)
+{
+  __u8 present;
+  decode(present, bp);
+  if (present) {
+    p = T{};
+    decode(*p, bp);
+  } else {
+    p = std::nullopt;
+  }
 }
 
 // boost optional
