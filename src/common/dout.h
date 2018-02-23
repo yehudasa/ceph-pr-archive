@@ -162,10 +162,11 @@ struct is_dynamic<dynamic_marker_t<T>> : public std::true_type {};
 				      CephContext* >::value,		\
 		  "provided cct must be compatible with CephContext*"); \
     auto _dout_cct = cct;						\
-    std::ostream* _dout = &_dout_e.get_ostream();
+    std::ostream* _dout = &_dout_e.get_ostream();                       \
+    bool __logging_legacy = cct->_conf->logging_legacy;
 
 #define dendl_impl std::flush;                                          \
-    _dout_cct->_log->submit_entry(std::move(_dout_e));                  \
+    _dout_cct->_log->submit_entry(std::move(_dout_e, __logging_legacy)); \
   }                                                                     \
   } while (0)
 #endif	// WITH_SEASTAR

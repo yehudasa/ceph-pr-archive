@@ -108,7 +108,7 @@ public:
 
   std::shared_ptr<Graylog> graylog() { return m_graylog; }
 
-  void submit_entry(Entry&& e);
+  void submit_entry(Entry&& e, bool logging_legacy);
 
   void start();
   void stop();
