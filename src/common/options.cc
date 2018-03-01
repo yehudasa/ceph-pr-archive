@@ -3398,14 +3398,6 @@ std::vector<Option> get_global_options() {
     .set_default(-1)
     .set_description(""),
 
-    Option("bdev_enable_discard", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
-    .set_default(false)
-    .set_description(""),
-
-    Option("bdev_async_discard", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
-    .set_default(false)
-    .set_description(""),
-
     Option("bluefs_alloc_size", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
     .set_default(1_M)
     .set_description(""),
@@ -3498,6 +3490,11 @@ std::vector<Option> get_global_options() {
     .set_default(0)
     .set_description("How frequently (in seconds) to dump information on "
       "allocation failure occurred during BlueFS space rebalance"),
+
+    Option("bluefs_bdev_discard", Option::TYPE_STR, Option::LEVEL_ADVANCED)
+    .set_default("none")
+    .set_enum_allowed({"none", "sync", "async"})
+    .set_description(""),
 
     Option("bluestore_spdk_mem", Option::TYPE_UINT, Option::LEVEL_DEV)
     .set_default(512)
@@ -3887,6 +3884,11 @@ std::vector<Option> get_global_options() {
     .set_default(false)
     .set_safe()
     .set_description("Cache writes by default (unless hinted NOCACHE or WONTNEED)"),
+
+    Option("bluestore_bdev_discard", Option::TYPE_STR, Option::LEVEL_ADVANCED)
+    .set_default("none")
+    .set_enum_allowed({"none", "sync", "async"})
+    .set_description(""),
 
     Option("bluestore_debug_misc", Option::TYPE_BOOL, Option::LEVEL_DEV)
     .set_default(false)

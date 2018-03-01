@@ -938,8 +938,6 @@ OPTION(bdev_debug_aio_suicide_timeout, OPT_FLOAT)
 // NVMe driver is loaded while osd is running.
 OPTION(bdev_nvme_unbind_from_kernel, OPT_BOOL)
 OPTION(bdev_nvme_retry_count, OPT_INT) // -1 means by default which is 4
-OPTION(bdev_enable_discard, OPT_BOOL)
-OPTION(bdev_async_discard, OPT_BOOL)
 
 OPTION(objectstore_blackhole, OPT_BOOL)
 
@@ -966,6 +964,7 @@ OPTION(bluestore_bluefs_reclaim_ratio, OPT_FLOAT) // how much to reclaim at a ti
 OPTION(bluestore_bluefs_balance_interval, OPT_FLOAT) // how often (sec) to balance free space between bluefs and bluestore
 // how often (sec) to dump allocation failure happened during bluefs rebalance
 OPTION(bluestore_bluefs_balance_failure_dump_interval, OPT_FLOAT)
+OPTION(bluefs_bdev_discard, OPT_STR)
 
 // If you want to use spdk driver, you need to specify NVMe serial number here
 // with "spdk:" prefix.
@@ -1064,6 +1063,7 @@ OPTION(bluestore_blobid_prealloc, OPT_U64)
 OPTION(bluestore_clone_cow, OPT_BOOL)  // do copy-on-write for clones
 OPTION(bluestore_default_buffered_read, OPT_BOOL)
 OPTION(bluestore_default_buffered_write, OPT_BOOL)
+OPTION(bluestore_bdev_discard, OPT_STR)
 OPTION(bluestore_debug_misc, OPT_BOOL)
 OPTION(bluestore_debug_no_reuse_blocks, OPT_BOOL)
 OPTION(bluestore_debug_small_allocations, OPT_INT)

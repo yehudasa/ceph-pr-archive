@@ -1818,6 +1818,7 @@ private:
 
   KeyValueDB *db = nullptr;
   BlockDevice *bdev = nullptr;
+  BlockDevice::discard_t discard_mode;
   std::string freelist_type;
   FreelistManager *fm = nullptr;
   Allocator *alloc = nullptr;
