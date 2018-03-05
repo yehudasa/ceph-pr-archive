@@ -3648,6 +3648,8 @@ BlueStore::BlueStore(CephContext *cct, const string& path)
     discard_mode = BlockDevice::DISCARD_SYNC;
   else if (cct->_conf->bluestore_bdev_discard == "async")
     discard_mode = BlockDevice::DISCARD_ASYNC;
+  else if (cct->_conf->bluestore_bdev_discard == "periodic")
+    discard_mode = BlockDevice::DISCARD_PERIODIC;
   else
     discard_mode = BlockDevice::DISCARD_NONE;
 }
@@ -3676,6 +3678,8 @@ BlueStore::BlueStore(CephContext *cct,
     discard_mode = BlockDevice::DISCARD_SYNC;
   else if (cct->_conf->bluestore_bdev_discard == "async")
     discard_mode = BlockDevice::DISCARD_ASYNC;
+  else if (cct->_conf->bluestore_bdev_discard == "periodic")
+    discard_mode = BlockDevice::DISCARD_PERIODIC;
   else
     discard_mode = BlockDevice::DISCARD_NONE;
 }
@@ -4484,7 +4488,8 @@ int BlueStore::_open_alloc()
   assert(bdev->get_size());
   alloc = Allocator::create(cct, cct->_conf->bluestore_allocator,
                             bdev->get_size(),
-                            min_alloc_size);
+                            min_alloc_size,
+                            discard_mode == BlockDevice::DISCARD_PERIODIC);
   if (!alloc) {
     lderr(cct) << __func__ << " Allocator::unknown alloc type "
                << cct->_conf->bluestore_allocator

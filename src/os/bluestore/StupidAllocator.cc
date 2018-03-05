@@ -10,9 +10,10 @@
 #undef dout_prefix
 #define dout_prefix *_dout << "stupidalloc 0x" << this << " "
 
-StupidAllocator::StupidAllocator(CephContext* cct)
+StupidAllocator::StupidAllocator(CephContext* cct, bool periodic_discard)
   : cct(cct), num_free(0),
     num_reserved(0),
+    periodic_discard(periodic_discard),
     free(10),
     last_alloc(0)
 {
@@ -84,6 +85,16 @@ uint64_t StupidAllocator::_aligned_len(
     return p.get_len() - skew;
 }
 
+bool StupidAllocator::_disjoint_with_discarding(
+  StupidAllocator::interval_set_t::iterator p)
+{
+  if (periodic_discard &&
+      in_flight_discard_set.intersects(p.get_start(), p.get_len()))
+    return false;
+  else
+    return true;
+}
+
 int64_t StupidAllocator::allocate_int(
   uint64_t want_size, uint64_t alloc_unit, int64_t hint,
   uint64_t *offset, uint32_t *length)
@@ -107,7 +118,8 @@ int64_t StupidAllocator::allocate_int(
     for (bin = orig_bin; bin < (int)free.size(); ++bin) {
       p = free[bin].lower_bound(hint);
       while (p != free[bin].end()) {
-	if (_aligned_len(p, alloc_unit) >= want_size) {
+	if (_aligned_len(p, alloc_unit) >= want_size &&
+	    _disjoint_with_discarding(p)) {
 	  goto found;
 	}
 	++p;
@@ -120,7 +132,8 @@ int64_t StupidAllocator::allocate_int(
     p = free[bin].begin();
     auto end = hint ? free[bin].lower_bound(hint) : free[bin].end();
     while (p != end) {
-      if (_aligned_len(p, alloc_unit) >= want_size) {
+      if (_aligned_len(p, alloc_unit) >= want_size &&
+	  _disjoint_with_discarding(p)) {
 	goto found;
       }
       ++p;
@@ -132,7 +145,8 @@ int64_t StupidAllocator::allocate_int(
     for (bin = orig_bin; bin >= 0; --bin) {
       p = free[bin].lower_bound(hint);
       while (p != free[bin].end()) {
-	if (_aligned_len(p, alloc_unit) >= alloc_unit) {
+	if (_aligned_len(p, alloc_unit) >= alloc_unit &&
+	    _disjoint_with_discarding(p)) {
 	  goto found;
 	}
 	++p;
@@ -145,7 +159,8 @@ int64_t StupidAllocator::allocate_int(
     p = free[bin].begin();
     auto end = hint ? free[bin].lower_bound(hint) : free[bin].end();
     while (p != end) {
-      if (_aligned_len(p, alloc_unit) >= alloc_unit) {
+      if (_aligned_len(p, alloc_unit) >= alloc_unit &&
+	  _disjoint_with_discarding(p)) {
 	goto found;
       }
       ++p;
@@ -194,6 +209,9 @@ int64_t StupidAllocator::allocate_int(
       _insert_free(off, len);
     }
   }
+
+  if (periodic_discard)
+    to_discard_set.erase(*offset, *length);
 
   num_free -= *length;
   num_reserved -= *length;
@@ -260,11 +278,41 @@ void StupidAllocator::release(
        ++p) {
     const auto offset = p.get_start();
     const auto length = p.get_len();
+    if (periodic_discard)
+      to_discard_set.insert(offset, length);
     ldout(cct, 10) << __func__ << " 0x" << std::hex << offset << "~" << length
 		   << std::dec << dendl;
     _insert_free(offset, length);
     num_free += length;
   }
+}
+
+int64_t StupidAllocator::allocate_for_discard(float ratio, interval_set<uint64_t>& to_discard)
+{
+  int64_t want;
+  int64_t allocated = 0;
+  std::lock_guard<std::mutex> l(lock);
+
+  want = (int64_t) to_discard_set.size() * ratio;
+
+  for (auto p = to_discard_set.begin();
+      p != to_discard_set.end() && allocated < want;
+      ++p) {
+    auto offset = p.get_start();
+    auto length = p.get_len();
+    to_discard.insert(offset, length);
+    in_flight_discard_set.insert(offset, length);
+    allocated += length;
+  }
+
+  return allocated;
+}
+
+void StupidAllocator::release_for_discarded(interval_set<uint64_t>& discarded)
+{
+  std::lock_guard<std::mutex> l(lock);
+  to_discard_set.subtract(discarded);
+  in_flight_discard_set.subtract(discarded);
 }
 
 uint64_t StupidAllocator::get_free()

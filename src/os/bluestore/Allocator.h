@@ -45,6 +45,9 @@ public:
    * set at once. This could save e.g. unnecessary mutex dance. */
   virtual void release(const interval_set<uint64_t>& release_set) = 0;
 
+  virtual int64_t allocate_for_discard(float ratio, interval_set<uint64_t>& to_discard) { return 0; }
+  virtual void release_for_discarded(interval_set<uint64_t>& discarded) { }
+
   virtual void dump() = 0;
 
   virtual void init_add_free(uint64_t offset, uint64_t length) = 0;
@@ -54,7 +57,7 @@ public:
 
   virtual void shutdown() = 0;
   static Allocator *create(CephContext* cct, string type, int64_t size,
-			   int64_t block_size);
+			   int64_t block_size, bool periodic_discard=false);
 };
 
 #endif
