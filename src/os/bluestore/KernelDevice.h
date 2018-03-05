@@ -38,9 +38,11 @@ class KernelDevice : public BlockDevice {
   std::mutex flush_mutex;
 
   aio_queue_t aio_queue;
-  aio_callback_t discard_callback;
+  discard_callback_t discard_callback;
   void *discard_callback_priv;
   bool aio_stop;
+  discard_t discard_mode;
+  int discard_delay;
   bool discard_started;
   bool discard_stop;
 
@@ -98,7 +100,8 @@ class KernelDevice : public BlockDevice {
   void debug_aio_unlink(aio_t& aio);
 
 public:
-  KernelDevice(CephContext* cct, aio_callback_t cb, void *cbpriv, aio_callback_t d_cb, void *d_cbpriv);
+  KernelDevice(CephContext* cct, aio_callback_t cb, void *cbpriv, discard_callback_t d_cb, void *d_cbpriv,
+	      discard_t discard_mode, int discard_delay);
 
   void aio_submit(IOContext *ioc) override;
   void discard_drain() override;

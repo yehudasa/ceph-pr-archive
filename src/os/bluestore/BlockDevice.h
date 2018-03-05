@@ -112,7 +112,9 @@ public:
     DISCARD_ASYNC,
     DISCARD_PERIODIC,
   } discard_t;
+
   typedef void (*aio_callback_t)(void *handle, void *aio);
+  typedef void (*discard_callback_t)(discard_t discard_mode, void *handle, void *aio);
 private:
   std::mutex ioc_reap_lock;
   std::vector<IOContext*> ioc_reap_queue;
@@ -136,7 +138,8 @@ public:
   virtual ~BlockDevice() = default;
 
   static BlockDevice *create(
-    CephContext* cct, const std::string& path, aio_callback_t cb, void *cbpriv, aio_callback_t d_cb, void *d_cbpriv);
+    CephContext* cct, const std::string& path, aio_callback_t cb, void *cbpriv, discard_callback_t d_cb, void *d_cbpriv,
+    discard_t discard_mode, int discard_delay);
   virtual bool supported_bdev_label() { return true; }
   virtual bool is_rotational() { return rotational; }
 

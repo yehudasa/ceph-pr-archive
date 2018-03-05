@@ -3614,18 +3614,29 @@ static void aio_cb(void *priv, void *priv2)
   c->aio_finish(store);
 }
 
-static void discard_cb(void *priv, void *priv2)
+static void discard_cb(BlockDevice::discard_t discard_mode, void *priv, void *priv2)
 {
   BlueStore *store = static_cast<BlueStore*>(priv);
   interval_set<uint64_t> *tmp = static_cast<interval_set<uint64_t>*>(priv2);
-  store->handle_discard(*tmp);
+  store->handle_discard(discard_mode, *tmp);
 }
 
-void BlueStore::handle_discard(interval_set<uint64_t>& to_release)
+void BlueStore::handle_discard(BlockDevice::discard_t mode, interval_set<uint64_t>& to_discard)
 {
-  dout(10) << __func__ << dendl;
+  dout(10) << __func__ << " discard mode " << mode << dendl;
   assert(alloc);
-  alloc->release(to_release);
+
+  if (mode == BlockDevice::DISCARD_ASYNC) {
+    for (auto p = to_discard.begin();p != to_discard.end(); ++p)
+      bdev->discard(p.get_start(), p.get_len());
+    alloc->release(to_discard);
+  } else if (mode == BlockDevice::DISCARD_PERIODIC) {
+    float free_ratio = cct->_conf->bluestore_bdev_periodic_discard_free_ratio;
+    alloc->allocate_for_discard(free_ratio, to_discard);
+    for (auto p = to_discard.begin();p != to_discard.end(); ++p)
+      bdev->discard(p.get_start(), p.get_len());
+    alloc->release_for_discarded(to_discard);
+  }
 }
 
 BlueStore::BlueStore(CephContext *cct, const string& path)
@@ -4333,7 +4344,8 @@ int BlueStore::_open_bdev(bool create)
 {
   assert(bdev == NULL);
   string p = path + "/block";
-  bdev = BlockDevice::create(cct, p, aio_cb, static_cast<void*>(this), discard_cb, static_cast<void*>(this));
+  bdev = BlockDevice::create(cct, p, aio_cb, static_cast<void*>(this), discard_cb, static_cast<void*>(this),
+			    discard_mode, cct->_conf->bluestore_bdev_periodic_discard_timeout);
   int r = bdev->open(p);
   if (r < 0)
     goto fail;

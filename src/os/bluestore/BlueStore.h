@@ -133,7 +133,7 @@ public:
                                   const std::set<std::string> &changed) override;
 
   //handler for discard event
-  void handle_discard(interval_set<uint64_t>& to_release);
+  void handle_discard(BlockDevice::discard_t mode, interval_set<uint64_t>& to_discard);
 
   void _set_csum();
   void _set_compression();

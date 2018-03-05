@@ -965,6 +965,8 @@ OPTION(bluestore_bluefs_balance_interval, OPT_FLOAT) // how often (sec) to balan
 // how often (sec) to dump allocation failure happened during bluefs rebalance
 OPTION(bluestore_bluefs_balance_failure_dump_interval, OPT_FLOAT)
 OPTION(bluefs_bdev_discard, OPT_STR)
+OPTION(bluefs_bdev_periodic_discard_timeout, OPT_INT)
+OPTION(bluefs_bdev_periodic_discard_free_ratio, OPT_FLOAT)
 
 // If you want to use spdk driver, you need to specify NVMe serial number here
 // with "spdk:" prefix.
@@ -1064,6 +1066,10 @@ OPTION(bluestore_clone_cow, OPT_BOOL)  // do copy-on-write for clones
 OPTION(bluestore_default_buffered_read, OPT_BOOL)
 OPTION(bluestore_default_buffered_write, OPT_BOOL)
 OPTION(bluestore_bdev_discard, OPT_STR)
+OPTION(bluestore_bdev_periodic_discard_timeout, OPT_INT)
+OPTION(bluestore_bdev_periodic_discard_free_ratio, OPT_FLOAT)
+
+
 OPTION(bluestore_debug_misc, OPT_BOOL)
 OPTION(bluestore_debug_no_reuse_blocks, OPT_BOOL)
 OPTION(bluestore_debug_small_allocations, OPT_INT)
