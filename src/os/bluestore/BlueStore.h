@@ -2163,6 +2163,7 @@ private:
   int _open_super_meta();
 
   void _open_statfs();
+  void _get_statfs_overall(struct store_statfs_t *buf);
 
   void _dump_alloc_on_rebalance_failure();
   int _reconcile_bluefs_freespace();
