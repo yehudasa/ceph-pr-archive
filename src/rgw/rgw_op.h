@@ -184,6 +184,9 @@ public:
   std::ostream& gen_prefix(std::ostream& out) const override;
   CephContext* get_cct() const override { return s->cct; }
   unsigned get_subsys() const override { return ceph_subsys_rgw; }
+  std::optional<uint64_t> get_epoch() const {
+    return store->get_epoch();
+  }
 };
 
 class RGWGetObj_Filter : public RGWGetDataCB
