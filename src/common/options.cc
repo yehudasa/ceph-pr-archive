@@ -6369,6 +6369,7 @@ std::vector<Option> get_rgw_options() {
 			  "do not set it in a production cluster, as it "
 			  "actively causes failures. Set this to a floating "
 			  "point value between 0 and 1."),
+
     Option("rgw_max_notify_retries", Option::TYPE_UINT,
 	   Option::LEVEL_ADVANCED)
     .set_default(3)
@@ -6382,6 +6383,7 @@ std::vector<Option> get_rgw_options() {
 			  "increasing this value may cause some operations to "
 			  "take longer in exceptional cases and thus may, "
 			  "rarely, cause clients to time out."),
+
     Option("rgw_sts_entry", Option::TYPE_STR, Option::LEVEL_ADVANCED)
     .set_default("sts")
     .set_description("STS URL prefix")
