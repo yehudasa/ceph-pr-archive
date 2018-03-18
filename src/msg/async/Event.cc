@@ -428,6 +428,7 @@ int EventCenter::process_events(unsigned timeout_microseconds,  ceph::timespan *
   if (external_num_events.load()) {
     external_lock.lock();
     deque<EventCallbackRef> cur_process;
+    EventCallbackRef prev_call_back = NULL;
     cur_process.swap(external_events);
     external_num_events.store(0);
     external_lock.unlock();
@@ -435,6 +436,11 @@ int EventCenter::process_events(unsigned timeout_microseconds,  ceph::timespan *
     while (!cur_process.empty()) {
       EventCallbackRef e = cur_process.front();
       ldout(cct, 30) << __func__ << " do " << e << dendl;
+      if (prev_call_back == e){
+        cur_process.pop_front();
+        continue;
+      }
+      prev_call_back = e;
       e->do_request(0);
       cur_process.pop_front();
     }
