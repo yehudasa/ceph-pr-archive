@@ -1,3 +1,11 @@
+12.2.10
+-------
+
+* In 12.2.9 and earlier releases, keyring caps were not checked for validity,
+  so the caps string could be anything. As of 12.2.10, caps strings are
+  validated and providing a keyring with an invalid caps string to, e.g.,
+  "ceph auth add" will result in an error.
+
 >= 12.1.2
 ---------
 * When running 'df' on a CephFS filesystem comprising exactly one data pool,
@@ -110,4 +118,3 @@
     even when there are no head errors, the head object will be output when any shard
     has an error.  This head object is there to show the snapset that was used in
     determining errors.
-
