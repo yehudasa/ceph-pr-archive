@@ -37,13 +37,13 @@
 #include "common/EventTrace.h"
 #include "perfglue/heap_profiler.h"
 
-//#ifdef WITH_LTTNG
-//#define TRACEPOINT_DEFINE
-//#define TRACEPOINT_PROBE_DYNAMIC_LINKAGE
-//#include "tracing/ceph_logging.h"
-//#undef TRACEPOINT_PROBE_DYNAMIC_LINKAGE
-//#undef TRACEPOINT_DEFINE
-//#endif
+#ifdef WITH_LTTNG
+#define TRACEPOINT_DEFINE
+#define TRACEPOINT_PROBE_DYNAMIC_LINKAGE
+#include "tracing/ceph_logging.h"
+#undef TRACEPOINT_PROBE_DYNAMIC_LINKAGE
+#undef TRACEPOINT_DEFINE
+#endif
 #include "tracing/ceph_logging_impl.h"
 
 #define dout_context cct
@@ -662,10 +662,12 @@ void BlueStore::GarbageCollector::process_protrusive_extents(
 //               << " unref 0x" << std::hex << it->length
 //               << " referenced = 0x" << bi.referenced_bytes
 //               << std::dec << dendl;
-      stringstream strstrblob;
-      strstrblob << *b;
-      trace_process_protrusive_extents_affected_blob(
-       (char*)strstrblob.str().c_str(), it->length, bi.referenced_bytes);
+//      stringstream strstrblob;
+//      strstrblob << *b;
+//      trace_process_protrusive_extents_affected_blob(
+//       (char*)strstrblob.str().c_str(), it->length, bi.referenced_bytes);
+       trace_process_protrusive_extents_affected_blob(
+        *b, it->length, bi.referenced_bytes);
       // NOTE: we can't move specific blob to resulting GC list here
       // when reference counter == 0 since subsequent extents might
       // decrement its expected_allocation. 
