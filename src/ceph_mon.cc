@@ -45,6 +45,8 @@
 
 #include "include/ceph_assert.h"
 
+#include "tracing/ceph_logging_impl.h"
+
 #define dout_subsys ceph_subsys_mon
 
 Monitor *mon = NULL;
