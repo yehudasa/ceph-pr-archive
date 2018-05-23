@@ -5378,14 +5378,17 @@ int BlueStore::_balance_bluefs_freespace(PExtentVector *extents)
       _dump_alloc_on_rebalance_failure();
       return 0;
     } else if (alloc_len < (int64_t)gift) {
-      dout(0) << __func__ << " insufficient allocate on 0x" << std::hex << gift
-              << " min_alloc_size 0x" << min_alloc_size 
-	      << " allocated 0x" << alloc_len
-	      << std::dec << dendl;
+//      dout(0) << __func__ << " insufficient allocate on 0x" << std::hex << gift
+//              << " min_alloc_size 0x" << min_alloc_size
+//	      << " allocated 0x" << alloc_len
+//	      << std::dec << dendl;
+      trace_bluefs_balance_freespace_insufficient_allocate(gift, min_alloc_size,
+        alloc_len);
       _dump_alloc_on_rebalance_failure();
     }
     for (auto& e : *extents) {
-      dout(1) << __func__ << " gifting " << e << " to bluefs" << dendl;
+//      dout(1) << __func__ << " gifting " << e << " to bluefs" << dendl;
+      trace_bluefs_balance_freespace_gifting_to_bluefs(e);
     }
     ret = 1;
   }
@@ -5526,6 +5529,7 @@ int BlueStore::_setup_block_symlink_or_file(
       ceph_assert(r == static_cast<int>(trid.size()));
       dout(1) << __func__ << " created " << name << " symlink to "
               << epath << dendl;
+      trace_bs_setup_block_symlink_created(name, epath);
       VOID_TEMP_FAILURE_RETRY(::close(fd));
     }
   }
@@ -5556,8 +5560,9 @@ int BlueStore::_setup_block_symlink_or_file(
 	    return -r;
 	  }
 	}
-	dout(1) << __func__ << " resized " << name << " file to "
-		<< byte_u_t(size) << dendl;
+//	dout(1) << __func__ << " resized " << name << " file to "
+//		<< byte_u_t(size) << dendl;
+        trace_bs_setup_block_symlink_resized(name, byte_u_t(size));
       }
       VOID_TEMP_FAILURE_RETRY(::close(fd));
     } else {
@@ -5574,7 +5579,8 @@ int BlueStore::_setup_block_symlink_or_file(
 
 int BlueStore::mkfs()
 {
-  dout(1) << __func__ << " path " << path << dendl;
+//  dout(1) << __func__ << " path " << path << dendl;
+  trace_bluestore_mkfs_create(path);
   int r;
   uuid_d old_fsid;
 
@@ -5582,7 +5588,8 @@ int BlueStore::mkfs()
     string done;
     r = read_meta("mkfs_done", &done);
     if (r == 0) {
-      dout(1) << __func__ << " already created" << dendl;
+//      dout(1) << __func__ << " already created" << dendl;
+      trace_bluestore_mkfs_create_already_created(path);
       if (cct->_conf->bluestore_fsck_on_mkfs) {
         r = fsck(cct->_conf->bluestore_fsck_on_mkfs_deep);
         if (r < 0) {
@@ -5632,9 +5639,11 @@ int BlueStore::mkfs()
   if (r < 0 || old_fsid.is_zero()) {
     if (fsid.is_zero()) {
       fsid.generate_random();
-      dout(1) << __func__ << " generated fsid " << fsid << dendl;
+//      dout(1) << __func__ << " generated fsid " << fsid << dendl;
+      trace_bluestore_mkfs_create_using_fsid(fsid, true);
     } else {
-      dout(1) << __func__ << " using provided fsid " << fsid << dendl;
+//      dout(1) << __func__ << " using provided fsid " << fsid << dendl;
+      trace_bluestore_mkfs_create_using_fsid(fsid, false);
     }
     // we'll write it later.
   } else {
@@ -5787,7 +5796,8 @@ void BlueStore::set_cache_shards(unsigned num)
 
 int BlueStore::_mount(bool kv_only, bool open_db)
 {
-  dout(1) << __func__ << " path " << path << dendl;
+//  dout(1) << __func__ << " path " << path << dendl;
+  trace_bluestore_mount_path(path);
 
   _kv_only = kv_only;
 
@@ -5901,7 +5911,7 @@ int BlueStore::_mount(bool kv_only, bool open_db)
 int BlueStore::umount()
 {
   ceph_assert(_kv_only || mounted);
-  dout(1) << __func__ << dendl;
+  trace_bluestore_unmount(0);
 
   _osr_drain_all();
 
@@ -9818,7 +9828,7 @@ int BlueStore::queue_transactions(
   if (cct->_conf->objectstore_blackhole) {
 //    dout(0) << __func__ << " objectstore_blackhole = TRUE, dropping transaction"
 //	    << dendl;
-    trace_bluestore_queue_transaction_blackhole(0);
+    trace_bluestore_queue_transactions_blackhole(0);
     for (auto& l : { on_applied, on_commit, on_applied_sync }) {
       for (auto c : l) {
 	delete c;
