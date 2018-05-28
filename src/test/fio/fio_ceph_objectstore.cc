@@ -20,6 +20,10 @@
 #include "include/random.h"
 #include "common/perf_counters.h"
 
+#ifndef typeof
+#define typeof __typeof__
+#endif
+
 #include <fio.h>
 #include <optgroup.h>
 
