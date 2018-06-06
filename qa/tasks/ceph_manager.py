@@ -111,7 +111,6 @@ class Thrasher:
         self.stopping = False
         self.logger = logger
         self.config = config
-        self.default_thrasher = self.config.get("default_thrasher", True)
         self.revive_timeout = self.config.get("revive_timeout", 360)
         self.pools_to_fix_pgp_num = set()
         if self.config.get('powercycle'):
