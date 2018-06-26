@@ -292,6 +292,8 @@ protected:
 
   virtual bool filter_out(const set<string>& filters) { return true; }
 
+  virtual void on_nref_zero() {}
+
 public:
   ZTracer::Trace osd_trace;
   ZTracer::Trace pg_trace;
@@ -315,6 +317,7 @@ public:
 
       case STATE_LIVE:
 	mark_event("done");
+	on_nref_zero();
 	tracker->unregister_inflight_op(this);
 	_unregistered();
 	if (!tracker->is_tracking()) {

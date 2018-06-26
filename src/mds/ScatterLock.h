@@ -45,7 +45,10 @@ class ScatterLock : public SimpleLock {
     DIRTY            = 1 << 10,
     FLUSHING         = 1 << 11,
     FLUSHED          = 1 << 12,
+    QUICKFLUSH	     = 1 << 13,
   };
+
+  set<utime_t> propagate_times;
 
 public:
   ScatterLock(MDSCacheObject *o, LockType *lt) :
@@ -83,7 +86,7 @@ public:
   {
     ceph_assert(get_type() == CEPH_LOCK_IFILE);
     ceph_assert(state == LOCK_XLOCK || state == LOCK_XLOCKDONE);
-    state = LOCK_XLOCKSNAP;
+    set_state(LOCK_XLOCKSNAP);
     add_waiter(WAIT_STABLE, c);
   }
 
@@ -94,6 +97,18 @@ public:
   }
 
   void set_update_stamp(utime_t t) { more()->update_stamp = t; }
+
+  set<utime_t>& get_propagate_times() {
+    return propagate_times;
+  }
+
+  void add_propagate_time(utime_t t) { propagate_times.insert(t); }
+  
+  void add_propagate_times(set<utime_t> ts) { propagate_times.insert(ts.begin(), ts.end()); }
+  
+  void clear_propagate_time(utime_t t) { propagate_times.erase(t); }
+
+  void clear_propagate_times() { propagate_times.clear(); }
 
   void set_scatter_wanted() {
     state_flags |= SCATTER_WANTED;
@@ -112,6 +127,16 @@ public:
   }
   bool get_unscatter_wanted() const {
     return state_flags & UNSCATTER_WANTED;
+  }
+
+  bool is_quickflush() const override {
+    return state_flags & QUICKFLUSH;
+  }
+  void set_quickflush() {
+    state_flags |= QUICKFLUSH;
+  }
+  void clear_quickflush() {
+    state_flags &= ~QUICKFLUSH;
   }
 
   bool is_dirty() const override {
@@ -163,9 +188,9 @@ public:
     if (rstate == LOCK_MIX || 
 	rstate == LOCK_MIX_LOCK || // replica still has wrlocks?
 	rstate == LOCK_MIX_SYNC)
-      state = LOCK_MIX;
+      set_state(LOCK_MIX);
     else if (locktoo && rstate == LOCK_LOCK)
-      state = LOCK_LOCK;
+      set_state(LOCK_LOCK);
   }
 
   void encode_state_for_rejoin(bufferlist& bl, int rep) {

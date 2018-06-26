@@ -1816,8 +1816,6 @@ void MDCache::_project_rstat_inode_to_frag(CInode::mempool_inode& inode, snapid_
   }
   dout(20) << "                  delta " << delta << dendl;
 
-  if (update_inode)
-    inode.accounted_rstat = inode.rstat;
 
   while (last >= ofirst) {
     /*
@@ -1910,11 +1908,20 @@ void MDCache::_project_rstat_inode_to_frag(CInode::mempool_inode& inode, snapid_
     dout(20) << "  project to [" << first << "," << last << "] " << *prstat << dendl;
     ceph_assert(last >= first);
     prstat->add(delta);
-    if (update_inode)
-      inode.accounted_rstat = inode.rstat;
+    if (prstat == &pf->rstat) {
+      if (!inode.rstat_dirty_from.is_zero() &&
+	  (pf->rstat_dirty_from.is_zero() ||
+	   pf->rstat_dirty_from > inode.rstat_dirty_from))
+	pf->rstat_dirty_from = inode.rstat_dirty_from;
+    }
     dout(20) << "      result [" << first << "," << last << "] " << *prstat << " " << *parent << dendl;
 
     last = first-1;
+  }
+
+  if (update_inode) {
+    inode.accounted_rstat = inode.rstat;
+    inode.rstat_dirty_from = utime_t();
   }
 }
 
@@ -2156,6 +2163,10 @@ void MDCache::predirty_journal_parents(MutationRef mut, EMetaBlob *blob,
 	if (pf->fragstat.mtime > pf->rstat.rctime) {
 	  dout(10) << "predirty_journal_parents updating mtime on " << *parent << dendl;
 	  pf->rstat.rctime = pf->fragstat.mtime;
+
+	  if (pf->rstat_dirty_from.is_zero() ||
+	      pf->rstat_dirty_from > pf->fragstat.mtime)
+	    pf->rstat_dirty_from = pf->fragstat.mtime;
 	} else {
 	  dout(10) << "predirty_journal_parents updating mtime UNDERWATER on " << *parent << dendl;
 	}
@@ -2332,7 +2343,13 @@ void MDCache::predirty_journal_parents(MutationRef mut, EMetaBlob *blob,
     parent->dirty_old_rstat.clear();
     project_rstat_frag_to_inode(pf->rstat, pf->accounted_rstat, parent->first, CEPH_NOSNAP, pin, true);//false);
 
+    if (!pf->rstat_dirty_from.is_zero() &&
+	(pi.inode.rstat_dirty_from.is_zero() ||
+	 pi.inode.rstat_dirty_from > pf->rstat_dirty_from))
+      pi.inode.rstat_dirty_from = pf->rstat_dirty_from;
+
     pf->accounted_rstat = pf->rstat;
+    pf->rstat_dirty_from = utime_t();
 
     if (parent->get_frag() == frag_t()) { // i.e., we are the only frag
       if (pi.inode.rstat.rbytes != pf->rstat.rbytes) {
@@ -9309,6 +9326,9 @@ void MDCache::dispatch_request(MDRequestRef& mdr)
     case CEPH_MDS_OP_UPGRADE_SNAPREALM:
       upgrade_inode_snaprealm_work(mdr);
       break;
+    case CEPH_MDS_OP_PROPAGATE_RSTAT:
+      propagate_rstats(mdr);
+      break;
     default:
       ceph_abort();
     }
@@ -12178,6 +12198,43 @@ void C_MDS_RetryRequest::finish(int r)
   cache->dispatch_request(mdr);
 }
 
+C_MDS_RetryRequests_WithLock::C_MDS_RetryRequests_WithLock(MDCache* c, MDRequestRef& r, ScatterLock* l)
+  : MDSInternalContext(c->mds), cache(c), lock(l)
+{
+  mdrs.insert(r);
+}
+
+C_MDS_RetryRequests_WithLock::C_MDS_RetryRequests_WithLock(MDCache* c, set<MDRequestRef> s, ScatterLock* l)
+  : MDSInternalContext(c->mds), lock(l)
+{
+  mdrs.insert(s.begin(), s.end());
+}
+
+void C_MDS_RetryRequests_WithLock::finish(int r)
+{
+  for (auto mdr : mdrs) {
+    mdr->retry++;
+    mds->locker->nestlock_nudged(lock);
+    cache->dispatch_request(mdr);
+  }
+}
+
+C_MDS_RetryRequests_WithLock::~C_MDS_RetryRequests_WithLock()
+{
+  mdrs.clear();
+}
+
+C_MDS_NestlockNudged::C_MDS_NestlockNudged(MDSRank* m, ScatterLock* l, MDSInternalContextBase* context)
+  : MDSInternalContext(m), lock(l), nestedContext(context)
+{
+}
+
+void C_MDS_NestlockNudged::finish(int r)
+{
+  mds->locker->nestlock_nudged(lock);
+  if (nestedContext)
+    nestedContext->complete(r);
+}
 
 class C_MDS_EnqueueScrub : public Context
 {
@@ -12766,4 +12823,89 @@ bool MDCache::dump_inode(Formatter *f, uint64_t number) {
   in->dump(f, CInode::DUMP_DEFAULT | CInode::DUMP_PATH);
   f->close_section();
   return true;
+}
+
+void MDCache::propagate_rstats(CInode* to, MDSContext* fin) {
+  MDRequestRef mdr =  request_start_internal(CEPH_MDS_OP_PROPAGATE_RSTAT);
+  mdr->internal_op_finish = fin;
+  mdr->in[0] = to;
+  mdr->rstats_propagate_time = ceph_clock_now();
+  propagate_rstats(mdr);
+}
+
+void MDCache::propagate_rstats(MDRequestRef& mdr) {
+  assert(mdr->internal_op > -1);
+  if (propagate_subtree_rstats(mdr))
+    return;
+
+  Locker* locker = mds->locker;
+
+  if (mdr->more()->waiting_on_slave.empty()) {
+    locker->propagate_rstats(mdr);
+  }
+  return;
+}
+
+bool MDCache::propagate_subtree_rstats(MDRequestRef& mdr) {
+  assert(mdr->internal_op > -1);
+  CInode* cur = mdr->in[0];
+  CDir* pdir = cur->get_projected_parent_dn()->get_dir();
+  set<CDir*> dirs;
+  get_wouldbe_subtree_bounds(pdir, dirs);
+  list<CDir*> drls(dirs.begin(), dirs.end());
+
+  bool went_wait = false;
+  
+  for (auto dir : drls) {
+    if (!cur->is_projected_ancestor_of(dir->get_inode()))
+      continue;
+    
+    dout(20) << "found a subtree: " << *dir << dendl;
+    
+    if (dir->is_ambiguous_auth()) {
+      dir->add_waiter(CDir::WAIT_SINGLEAUTH, new C_MDS_RetryRequest(this, mdr));
+      dout(20) << "dir " << *dir << "is ambiguous auth, going to wait for single auth" << dendl;
+      went_wait = true;
+      continue;
+    }
+    
+    if (dir->is_auth()) {
+      dout(20) << "dir " << *dir << "is auth, skipping" << dendl;
+      dirs.clear();
+      get_wouldbe_subtree_bounds(dir, dirs);
+      list<CDir*> tmpls(dirs.begin(), dirs.end());
+      drls.splice(drls.end(), tmpls, tmpls.begin(), tmpls.end());
+      continue;
+    }
+    
+    if (mdr->more()->queried_for_rstat_propagation.count(dir)) {
+      dout(20) << "dir " << *dir << "has been queried, skipping" << dendl;
+      continue;
+    }
+
+    if (!dir->get_inode()->is_auth()) {
+      dout(20) << " I'm not auth for " << *dir->get_inode() << ", skipping" << dendl;
+      continue;
+    }
+    
+    for (auto &p : dir->get_inode()->get_replicas()) {
+      if (p.first != dir->get_dir_auth().first)
+	continue;
+      dout(20) << "found auth for " << *dir << ", quering" << dendl;
+      MDRequestRef internal_mdr = request_start_internal(CEPH_MDS_OP_PROPAGATE_RSTAT);
+      internal_mdr->parent_mdr = mdr;
+      MMDSSlaveRequest::ref req = MMDSSlaveRequest::create(internal_mdr->reqid, internal_mdr->attempt,
+	  MMDSSlaveRequest::OP_PROPAGATERSTATS);
+      dir->get_inode()->make_path(req->srcdnpath);
+      req->op_stamp = mdr->get_op_stamp();
+      mds->send_message_mds(req, p.first);
+      mdr->more()->waiting_on_slave.insert(p.first);
+      mdr->more()->queried_for_rstat_propagation.insert(dir);
+      internal_mdr->more()->waiting_on_slave.insert(p.first);
+      internal_mdr->more()->queried_for_rstat_propagation.insert(dir);
+      went_wait = true;
+    }
+  }
+
+  return went_wait;
 }

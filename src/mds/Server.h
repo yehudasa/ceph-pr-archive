@@ -106,6 +106,8 @@ private:
   friend class ServerContext;
   friend class ServerLogContext;
 
+  bool propagate_subtree_roots_rstat(MDRequestRef& mdr, CInode* in);
+
 public:
   bool terminating_sessions;
 

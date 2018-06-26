@@ -332,6 +332,7 @@ void MDRequestImpl::reset_slave_request(const MMDSSlaveRequest::const_ref& req)
 void MDRequestImpl::print(ostream &out) const
 {
   out << "request(" << reqid;
+  out << " nref=" << nref;
   //if (request) out << " " << *request;
   if (is_slave()) out << " slave_to mds." << slave_to_mds;
   if (client_request) out << " cr=" << client_request;

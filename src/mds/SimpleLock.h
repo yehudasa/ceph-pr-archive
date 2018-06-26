@@ -168,7 +168,7 @@ protected:
   __s16 state;
   __s16 state_flags;
 
-  enum {
+ enum {
     LEASED		= 1 << 0,
     NEED_RECOVER	= 1 << 1,
   };
@@ -224,7 +224,7 @@ public:
     more()->excl_client = c;
   }
 
-  SimpleLock(MDSCacheObject *o, LockType *lt) :
+ SimpleLock(MDSCacheObject *o, LockType *lt) :
     type(lt),
     parent(o), 
     state(LOCK_SYNC),
@@ -322,6 +322,7 @@ public:
   int set_state(int s) { 
     state = s; 
     //assert(!is_stable() || gather_set.size() == 0);  // gather should be empty in stable states.
+
     return s;
   }
   void set_state_rejoin(int s, MDSInternalContextBase::vec& waiters, bool survivor) {
@@ -406,6 +407,8 @@ public:
   virtual bool is_flushing() const { return false; }
   virtual bool is_flushed() const { return false; }
   virtual void clear_flushed() { }
+  virtual void clear_quickflush() { }
+  virtual bool is_quickflush() const { return false; }
 
   // can_*
   bool can_lease(client_t client) const {
@@ -500,7 +503,7 @@ public:
     ceph_assert(state == LOCK_XLOCK || is_locallock() ||
 	   state == LOCK_LOCK /* if we are a slave */);
     if (!is_locallock())
-      state = LOCK_XLOCKDONE;
+      set_state(LOCK_XLOCKDONE);
     more()->xlock_by.reset();
   }
   void put_xlock() {
@@ -570,7 +573,9 @@ public:
   }
   void decode(bufferlist::const_iterator& p) {
     DECODE_START(2, p);
-    decode(state, p);
+    __s16 s;
+    decode(s, p);
+    set_state(s);
     set<__s32> g;
     decode(g, p);
     if (!g.empty())
@@ -587,7 +592,7 @@ public:
     __s16 s;
     decode(s, p);
     if (is_new)
-      state = s;
+      set_state(s);
   }
   void decode_state_rejoin(bufferlist::const_iterator& p, MDSInternalContextBase::vec& waiters, bool survivor) {
     __s16 s;
@@ -635,7 +640,7 @@ public:
   }
   void export_twiddle() {
     clear_gather();
-    state = get_replica_state();
+    set_state(get_replica_state());
   }
 
   /** replicate_relax
@@ -645,7 +650,7 @@ public:
     ceph_assert(parent->is_auth());
     ceph_assert(!parent->is_replicated());
     if (state == LOCK_LOCK && !is_used())
-      state = LOCK_SYNC;
+      set_state(LOCK_SYNC);
   }
   bool remove_replica(int from) {
     if (is_gathering(from)) {

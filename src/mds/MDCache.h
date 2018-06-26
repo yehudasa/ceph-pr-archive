@@ -306,6 +306,8 @@ protected:
   /* subtree keys and each tree's non-recursive nested subtrees (the "bounds") */
   map<CDir*,set<CDir*> > subtrees;
   map<CInode*,list<pair<CDir*,CDir*> > > projected_subtree_renames;  // renamed ino -> target dir
+  void propagate_rstats(MDRequestRef& mdr);
+  bool propagate_subtree_rstats(MDRequestRef& mdr);
   
   // adjust subtree auth specification
   //  dir->dir_auth
@@ -425,6 +427,7 @@ public:
   void finish_committed_masters();
 
   void _logged_slave_commit(mds_rank_t from, metareqid_t reqid);
+  void propagate_rstats(CInode* to, MDSContext* fin);
 
   // -- recovery --
 protected:
@@ -1268,4 +1271,23 @@ class C_MDS_RetryRequest : public MDSInternalContext {
   void finish(int r) override;
 };
 
+class C_MDS_RetryRequests_WithLock : public MDSInternalContext {
+  MDCache* cache;
+  set<MDRequestRef> mdrs;
+  ScatterLock* lock;
+ public:
+  C_MDS_RetryRequests_WithLock(MDCache* c, MDRequestRef& r, ScatterLock* lock);
+  C_MDS_RetryRequests_WithLock(MDCache* c, set<MDRequestRef> s, ScatterLock* lock);
+  void finish(int r) override;
+  ~C_MDS_RetryRequests_WithLock();
+};
+
+class C_MDS_NestlockNudged : public MDSInternalContext {
+  ScatterLock* lock;
+  MDSInternalContextBase* nestedContext;
+ public:
+  
+  C_MDS_NestlockNudged(MDSRank* m, ScatterLock* lock, MDSInternalContextBase* context = NULL);
+  void finish(int r) override;
+};
 #endif

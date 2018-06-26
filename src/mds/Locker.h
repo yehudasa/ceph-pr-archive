@@ -56,6 +56,9 @@ private:
   Locker(MDSRank *m, MDCache *c);
 
   SimpleLock *get_lock(int lock_type, const MDSCacheObjectInfo &info);
+
+  void propagate_rstats(CInode* to, MDSContext* fin);
+  void propagate_rstats(MDRequestRef& internal_mdr);
   
   void dispatch(const Message::const_ref &m);
   void handle_lock(const MLock::const_ref &m);
@@ -140,9 +143,9 @@ protected:
   void handle_simple_lock(SimpleLock *lock, const MLock::const_ref &m);
 
 public:
-  bool simple_sync(SimpleLock *lock, bool *need_issue=0);
+  bool simple_sync(SimpleLock *lock, bool *need_issue=0, MDSInternalContextBase* c = NULL);
 protected:
-  void simple_lock(SimpleLock *lock, bool *need_issue=0);
+  bool simple_lock(SimpleLock *lock, bool *need_issue=0, MDSInternalContextBase* c = NULL);
   void simple_excl(SimpleLock *lock, bool *need_issue=0);
   void simple_xlock(SimpleLock *lock);
 
@@ -152,7 +155,7 @@ public:
   void scatter_eval(ScatterLock *lock, bool *need_issue);        // public for MDCache::adjust_subtree_auth()
 
   void scatter_tick();
-  void scatter_nudge(ScatterLock *lock, MDSInternalContextBase *c, bool forcelockchange=false);
+  bool scatter_nudge(ScatterLock *lock, MDSInternalContextBase *c, bool forcelockchange=false);
 
 protected:
   void handle_scatter_lock(ScatterLock *lock, const MLock::const_ref &m);
@@ -161,17 +164,21 @@ protected:
   void scatter_tempsync(ScatterLock *lock, bool *need_issue=0);
 
   void scatter_writebehind(ScatterLock *lock);
+  void propagate_rstats_internal(MDRequestRef& internal_mdr);
 
   void scatter_writebehind_finish(ScatterLock *lock, MutationRef& mut);
 
   xlist<ScatterLock*> updated_scatterlocks;
+  map<utime_t, set<ScatterLock*>> nudging_nestlocks;
+
 public:
+  void mark_nudging_nestlock(utime_t propagate_time, ScatterLock* lock, bool quickflush=false);
+
+  void nestlock_nudged(ScatterLock* lock);
+
   void mark_updated_scatterlock(ScatterLock *lock);
 
-
   void handle_reqrdlock(SimpleLock *lock, const MLock::const_ref &m);
-
-
 
   // caps
 
@@ -231,7 +238,7 @@ public:
   void file_eval(ScatterLock *lock, bool *need_issue);
 protected:
   void handle_file_lock(ScatterLock *lock, const MLock::const_ref &m);
-  void scatter_mix(ScatterLock *lock, bool *need_issue=0);
+  bool scatter_mix(ScatterLock *lock, bool *need_issue=0, MDSInternalContextBase* c = NULL);
   void file_excl(ScatterLock *lock, bool *need_issue=0);
   void file_xsyn(SimpleLock *lock, bool *need_issue=0);
 
@@ -240,6 +247,7 @@ public:
 
 private:
   xlist<ScatterLock*> updated_filelocks;
+
 public:
   void mark_updated_Filelock(ScatterLock *lock);
 

@@ -704,6 +704,7 @@ public:
 
   inode_load_vec_t pop;
   elist<CInode*>::item item_pop_lru;
+  map<utime_t, MDSContext*> waiting_for_propagation;
 
   // friends
   friend class Server;
@@ -758,6 +759,9 @@ public:
   int d_type() const { return IFTODT(inode.mode); }
 
   mempool_inode& get_inode() { return inode; }
+  utime_t& get_rstat_dirty_from() { return get_projected_inode()->rstat_dirty_from; }
+  utime_t& get_dirfrags_rstat_dirty_from();
+
   CDentry* get_parent_dn() { return parent; }
   const CDentry* get_parent_dn() const { return parent; }
   CDentry* get_projected_parent_dn() { return !projected_parent.empty() ? projected_parent.back() : parent; }
