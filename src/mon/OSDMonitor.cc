@@ -16,10 +16,15 @@
  *
  */
 
-#include <algorithm>
-#include <boost/algorithm/string.hpp>
 #include <locale>
 #include <sstream>
+#include <utility>
+#include <algorithm>
+#include <unordered_map>
+
+#include <experimental/iterator>
+
+#include <boost/algorithm/string.hpp>
 
 #include "mon/OSDMonitor.h"
 #include "mon/Monitor.h"
@@ -180,6 +185,341 @@ bool is_unmanaged_snap_op_permitted(CephContext* cct,
 }
 
 } // anonymous namespace
+
+
+namespace ceph::cmd_osd {
+
+/* Flag tables and flag handling:
+    - these must be syncronized with the corresponding entries in MonCommands.h,
+    in particular the "osd set" and "osd unset" entries. While those tables
+    set up the commands and describe the permissions and allowed flags 
+    (e.g. "--yes-i-really-mean-it") they do not capture semantics such as whether
+    verification is required or whether or not operations are symmetrical (i.e. can
+    be "undone" and/or applied idempotently).
+*/
+
+// Symmetric flags may be applied idempotentently, at least in the sense that
+// they can be un-done (we have no control over their total effect-fulness):
+enum struct flag_symmetry { yes, no };
+
+using standard_flag_t = tuple<flag_symmetry, int>;
+using special_flag_t  = tuple<flag_symmetry>;
+
+enum struct flag_result_t : int { 
+    ok              = 0,
+    not_verified    = -EPERM, 
+    not_set         = -EINVAL, 
+};
+
+struct cmd_osd_change_flag final
+{
+    OSDMonitor& osdmon;
+    MonOpRequestRef& op;
+    const cmdmap_t& cmdmap;
+   
+    std::ostream& os;
+
+    const OSDMap& osdmap;
+
+    vector<string> keys;    
+    string sure;         // i.e. --yes-i-really-mean-it
+
+    static std::unordered_map<std::string, standard_flag_t> flag_kvs; 
+    static std::unordered_map<std::string, special_flag_t> special_flag_kvs;
+
+    bool prepare_set_flag(MonOpRequestRef& op, const int flag_value)
+    {
+        return OSDMonitor::command_projection::prepare_set_flag(osdmon, op, flag_value);
+    }
+
+    void set_pending_flags(MonOpRequestRef& op, const std::vector<int>& flags)
+    {
+        return OSDMonitor::command_projection::set_pending_flags(osdmon, op, flags);
+    }
+
+    void unset_pending_flags(MonOpRequestRef& op, const std::vector<int>& flags)
+    {
+        return OSDMonitor::command_projection::unset_pending_flags(osdmon, op, flags);
+    }
+
+    void wait_for_finished_command_proposal(MonOpRequestRef& op, const std::string& msg)
+    {
+        return OSDMonitor::command_projection::wait_for_finished_command_proposal(osdmon, op, msg);
+    }
+
+ public:
+    cmd_osd_change_flag(OSDMonitor& osdmon, MonOpRequestRef& op, const cmdmap_t& cmdmap, std::ostream& os)
+     : osdmon(osdmon),
+       op(op),
+       cmdmap(cmdmap),
+       os(os), 
+       osdmap(osdmon.osdmap)
+    {
+        auto& cct = OSDMonitor::command_projection::cct(osdmon);
+
+        // "key" is singular to avoid a naming conflict; it can however
+        // contain multiple keys:
+        cmd_getval(cct, cmdmap, "key", keys);
+        cmd_getval(cct, cmdmap, "sure", sure);
+    }
+
+ public:
+    flag_result_t set_flag(const std::string& key) 
+    {
+        return flag_result_t::ok == set_simple_flag(key) ? 
+                flag_result_t::ok : set_special_flag(key);
+    }
+
+    flag_result_t unset_flag(const std::string& key) 
+    {
+        // We don't worry about "special" flags because they are filtered out in MonCommands.h:
+        return unset_simple_flag(key);
+    }
+
+    flag_result_t set_flags()
+    {
+        return set_flags(keys);
+    }
+
+    flag_result_t unset_flags()
+    {
+        return unset_flags(keys);
+    }
+
+  private:
+    flag_result_t set_flags(const std::vector<std::string>& flags) 
+    {
+        // This case should be filtered by the command mechanism:
+        if (flags.empty()) {
+            os << "no flag(s) specified";
+            return flag_result_t::not_set;
+        }
+
+        // Setting a single flag allows any flag to be set, including special flags:
+        if (1 == flags.size()) {
+            return set_flag(flags[0]);
+        }
+
+        // Setting multiple flags is required to be idempotent. Since not all flags that
+        // may be set have a corresponding "unset" operation, if any requested flags aren't
+        // symmetric, we reject the whole operation:
+        if (auto symmetric = [this](const auto& f) { return cmd_osd_change_flag::is_symmetric(os, f); };
+            !all_of(begin(flags), end(flags), symmetric)) {
+                os << "cannot complete bulk \"set\" operation.";
+                return flag_result_t::not_set;
+        }
+
+        // Gather the bitmask values for the key names:
+        vector<int> bitmask_values;
+
+        for (const auto& flag : flags) {
+            const auto kv = flag_kvs.find(flag.c_str());
+
+            if (end(flag_kvs) == kv) {
+                os << "no such flag \"" << flag << "\""; 
+                return flag_result_t::not_set;
+            }
+            
+            bitmask_values.push_back(get<1>(kv->second));
+        }
+
+        set_pending_flags(op, bitmask_values);
+
+        using namespace std::experimental;
+
+        os << "set ";
+        copy(begin(flags), end(flags), make_ostream_joiner(os, "; "));
+
+        // Finally, make the actual request to set the keys:
+        ostringstream oss;
+        oss << os.rdbuf();
+        wait_for_finished_command_proposal(op, oss.str());
+
+        return flag_result_t::ok;
+    }
+
+    flag_result_t unset_flags(const std::vector<std::string>& flags) 
+    {
+        if (flags.empty()) {
+            os << "no flag specified";
+            return flag_result_t::not_set;
+        }
+
+        // Gather the bitmask values for the key names:
+        vector<int> bitmask_values;
+
+        for (const auto& flag : flags) {
+            const auto kv = flag_kvs.find(flag.c_str());
+
+            if (end(flag_kvs) == kv) {
+                os << "no such flag \"" << flag << "\""; 
+                return flag_result_t::not_set;
+            }
+            
+            bitmask_values.push_back(get<1>(kv->second));
+        }
+
+        unset_pending_flags(op, bitmask_values);
+
+        using namespace std::experimental;
+
+        os << "unset ";
+        copy(begin(flags), end(flags), make_ostream_joiner(os, "; "));
+
+        // Finally, make the actual request to unset the keys:
+        ostringstream oss;
+        oss << os.rdbuf();
+        wait_for_finished_command_proposal(op, oss.str());
+
+        return flag_result_t::ok;
+    }
+
+ private:
+    flag_result_t set_simple_flag(const std::string& key) 
+    {
+        const auto kv = flag_kvs.find(key.c_str());
+
+        auto& flag_value = get<1>(kv->second);
+
+        return end(flag_kvs) != kv ? 
+                   static_cast<flag_result_t>(OSDMonitor::command_projection::prepare_set_flag(osdmon, op, flag_value)) : 
+                   flag_result_t::not_set;
+    }
+
+    flag_result_t unset_simple_flag(const std::string& key) 
+    {
+        const auto kv = flag_kvs.find(key.c_str());
+
+        auto& flag_value = get<1>(kv->second);
+
+        return end(flag_kvs) != kv ? 
+                   static_cast<flag_result_t>(OSDMonitor::command_projection::prepare_unset_flag(osdmon, op, flag_value)) : 
+                   flag_result_t::not_set;
+    }
+
+    flag_result_t set_special_flag(const std::string& flag_name); 
+
+private:
+    static bool is_symmetric(ostream& os, const string& flag_name) 
+    { 
+            auto flag = flag_kvs.find(flag_name);
+
+            if (end(flag_kvs) == flag) {
+                os << flag_name << " not found";
+                return false;
+            }
+
+            if (flag_symmetry::yes != get<0>((*flag).second)) {
+                os << flag_name << " has no \"unset\" operation; ";
+                return false;
+            }
+
+            return true;
+    }
+};
+
+// Flags with no special handling:
+std::unordered_map<std::string, standard_flag_t> cmd_osd_change_flag::flag_kvs {
+   { "full",           { flag_symmetry::yes,  CEPH_OSDMAP_FULL } },
+   { "noup",           { flag_symmetry::yes,  CEPH_OSDMAP_NOUP } },
+   { "nodown",         { flag_symmetry::yes,  CEPH_OSDMAP_NODOWN } },
+   { "noin",           { flag_symmetry::yes,  CEPH_OSDMAP_NOIN } },
+   { "noout",          { flag_symmetry::yes,  CEPH_OSDMAP_NOOUT } },
+   { "nobackfill",     { flag_symmetry::yes,  CEPH_OSDMAP_NOBACKFILL } },
+   { "norebalance",    { flag_symmetry::yes,  CEPH_OSDMAP_NOREBALANCE } },
+   { "norecover",      { flag_symmetry::yes,  CEPH_OSDMAP_NORECOVER } },
+   { "noscrub",        { flag_symmetry::yes,  CEPH_OSDMAP_NOSCRUB } },
+   { "nodeep-scrub",   { flag_symmetry::yes,  CEPH_OSDMAP_NODEEP_SCRUB } },
+   { "notieragent",    { flag_symmetry::yes,  CEPH_OSDMAP_NOTIERAGENT } },
+   { "nosnaptrim",     { flag_symmetry::yes,  CEPH_OSDMAP_NOSNAPTRIM } },
+   { "sortbitwise",    { flag_symmetry::no,   CEPH_OSDMAP_SORTBITWISE } },
+   { "pause",          { flag_symmetry::yes,  CEPH_OSDMAP_PAUSERD | CEPH_OSDMAP_PAUSEWR } },
+};
+
+// Flags with special handling (e.g. backed by specific code):
+std::unordered_map<std::string, special_flag_t> special_flag_kvs {
+   { "recovery_deletes",       { flag_symmetry::no } },
+   { "require_jewel_osds",     { flag_symmetry::no } },
+   { "require_kraken_osds",    { flag_symmetry::no } },
+};
+
+flag_result_t cmd_osd_change_flag::set_special_flag(const std::string& flag_name)
+{
+   if (flag_name == "recovery_deletes") {
+     if (!osdmap.get_num_up_osds() && sure != "--yes-i-really-mean-it") {
+       os << "Not advisable to continue since no OSDs are up. Pass "
+          << "--yes-i-really-mean-it if you really wish to continue.";
+       return flag_result_t::not_verified;
+     }
+
+     if (HAVE_FEATURE(osdmap.get_up_osd_features(), OSD_RECOVERY_DELETES)
+         || sure == "--yes-i-really-mean-it") {
+         return static_cast<flag_result_t>(prepare_set_flag(op, CEPH_OSDMAP_RECOVERY_DELETES));
+     } 
+
+     os << "not all up OSDs have OSD_RECOVERY_DELETES feature";
+     return flag_result_t::not_verified;
+   } 
+
+   if (flag_name == "require_jewel_osds") {
+         if (!osdmap.get_num_up_osds() && sure != "--yes-i-really-mean-it") {
+             os << "Not advisable to continue since no OSDs are up. Pass "
+                << "--yes-i-really-mean-it if you really wish to continue.";
+             return flag_result_t::not_verified;
+         }
+
+         if (!osdmap.test_flag(CEPH_OSDMAP_SORTBITWISE)) {
+             os << "the sortbitwise flag must be set before require_jewel_osds";
+             return flag_result_t::not_verified;
+         } 
+
+         if (osdmap.require_osd_release >= CEPH_RELEASE_JEWEL) {
+             os << "require_osd_release is already >= jewel";
+             return flag_result_t::ok;
+         } 
+
+         if (HAVE_FEATURE(osdmap.get_up_osd_features(), SERVER_JEWEL)
+             || sure == "--yes-i-really-mean-it") {
+             return static_cast<flag_result_t>(prepare_set_flag(op, CEPH_OSDMAP_REQUIRE_JEWEL));
+         } 
+
+         os << "not all up OSDs have CEPH_FEATURE_SERVER_JEWEL feature";
+         return flag_result_t::not_verified;
+   } 
+
+   if (flag_name == "require_kraken_osds") {
+         if (!osdmap.get_num_up_osds() && sure != "--yes-i-really-mean-it") {
+           os << "Not advisable to continue since no OSDs are up. Pass "
+              << "--yes-i-really-mean-it if you really wish to continue.";
+           return flag_result_t::not_verified;
+         }
+
+         if (!osdmap.test_flag(CEPH_OSDMAP_SORTBITWISE)) {
+             os << "the sortbitwise flag must be set before require_kraken_osds";
+             return flag_result_t::not_verified;
+         } 
+
+         if (osdmap.require_osd_release >= CEPH_RELEASE_KRAKEN) {
+             os << "require_osd_release is already >= kraken";
+             return flag_result_t::ok;
+         } 
+
+         if (HAVE_FEATURE(osdmap.get_up_osd_features(), SERVER_KRAKEN)
+             || sure == "--yes-i-really-mean-it") {
+             bool r = prepare_set_flag(op, CEPH_OSDMAP_REQUIRE_KRAKEN);
+             // ensure JEWEL is also set
+             osdmon.pending_inc.new_flags |= CEPH_OSDMAP_REQUIRE_JEWEL;
+             return static_cast<flag_result_t>(r);
+         }
+
+         os << "not all up OSDs have CEPH_FEATURE_SERVER_KRAKEN feature";
+         return flag_result_t::not_verified;
+   } 
+
+   return flag_result_t::not_set;
+}
+
+} // namespace ceph::cmd_osd
 
 void LastEpochClean::Lec::report(ps_t ps, epoch_t last_epoch_clean)
 {
@@ -6770,29 +7110,87 @@ int OSDMonitor::prepare_new_pool(string& name,
   return 0;
 }
 
+void OSDMonitor::set_pending_flag(MonOpRequestRef op, const int flag)
+{
+  op->mark_osdmon_event(__func__);
+
+  if (pending_inc.new_flags < 0)
+    pending_inc.new_flags = osdmap.get_flags();
+
+  pending_inc.new_flags |= flag;
+}
+
+void OSDMonitor::unset_pending_flag(MonOpRequestRef op, const int flag)
+{
+  op->mark_osdmon_event(__func__);
+
+  if (pending_inc.new_flags < 0)
+    pending_inc.new_flags = osdmap.get_flags();
+
+  pending_inc.new_flags &= ~flag;
+}
+
+void OSDMonitor::set_pending_flags(MonOpRequestRef op, const std::vector<int>& flags)
+{
+  op->mark_osdmon_event(__func__);
+
+  if (pending_inc.new_flags < 0)
+    pending_inc.new_flags = osdmap.get_flags();
+
+  for(const auto& flag : flags)
+   pending_inc.new_flags |= flag;
+}
+
+void OSDMonitor::unset_pending_flags(MonOpRequestRef op, const std::vector<int>& flags)
+{
+  op->mark_osdmon_event(__func__);
+
+  if (pending_inc.new_flags < 0)
+    pending_inc.new_flags = osdmap.get_flags();
+
+  for(const auto& flag : flags)
+   pending_inc.new_flags &= ~flag;
+}
+
+void OSDMonitor::wait_for_finished_command_proposal(MonOpRequestRef op, const std::string& msg)
+{
+ wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, msg,
+						    get_last_committed() + 1));
+}
+
 bool OSDMonitor::prepare_set_flag(MonOpRequestRef op, int flag)
 {
   op->mark_osdmon_event(__func__);
-  ostringstream ss;
+
   if (pending_inc.new_flags < 0)
     pending_inc.new_flags = osdmap.get_flags();
+
   pending_inc.new_flags |= flag;
+
+  std::ostringstream ss;
   ss << OSDMap::get_flag_string(flag) << " is set";
+
   wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, ss.str(),
 						    get_last_committed() + 1));
+
   return true;
 }
 
 bool OSDMonitor::prepare_unset_flag(MonOpRequestRef op, int flag)
 {
   op->mark_osdmon_event(__func__);
-  ostringstream ss;
+
   if (pending_inc.new_flags < 0)
     pending_inc.new_flags = osdmap.get_flags();
+
   pending_inc.new_flags &= ~flag;
+
+  std::ostringstream ss;
   ss << OSDMap::get_flag_string(flag) << " is unset";
+
   wait_for_finished_proposal(op, new Monitor::C_Command(mon, op, 0, ss.str(),
 						    get_last_committed() + 1));
+
   return true;
 }
 
@@ -9841,139 +10239,31 @@ bool OSDMonitor::prepare_command_impl(MonOpRequestRef op,
   } else if (prefix == "osd unpause") {
     return prepare_unset_flag(op, CEPH_OSDMAP_PAUSERD | CEPH_OSDMAP_PAUSEWR);
 
-  } else if (prefix == "osd set") {
-    string sure;
-    cmd_getval(cct, cmdmap, "sure", sure);
-    string key;
-    cmd_getval(cct, cmdmap, "key", key);
-    if (key == "full")
-      return prepare_set_flag(op, CEPH_OSDMAP_FULL);
-    else if (key == "pause")
-      return prepare_set_flag(op, CEPH_OSDMAP_PAUSERD | CEPH_OSDMAP_PAUSEWR);
-    else if (key == "noup")
-      return prepare_set_flag(op, CEPH_OSDMAP_NOUP);
-    else if (key == "nodown")
-      return prepare_set_flag(op, CEPH_OSDMAP_NODOWN);
-    else if (key == "noout")
-      return prepare_set_flag(op, CEPH_OSDMAP_NOOUT);
-    else if (key == "noin")
-      return prepare_set_flag(op, CEPH_OSDMAP_NOIN);
-    else if (key == "nobackfill")
-      return prepare_set_flag(op, CEPH_OSDMAP_NOBACKFILL);
-    else if (key == "norebalance")
-      return prepare_set_flag(op, CEPH_OSDMAP_NOREBALANCE);
-    else if (key == "norecover")
-      return prepare_set_flag(op, CEPH_OSDMAP_NORECOVER);
-    else if (key == "noscrub")
-      return prepare_set_flag(op, CEPH_OSDMAP_NOSCRUB);
-    else if (key == "nodeep-scrub")
-      return prepare_set_flag(op, CEPH_OSDMAP_NODEEP_SCRUB);
-    else if (key == "notieragent")
-      return prepare_set_flag(op, CEPH_OSDMAP_NOTIERAGENT);
-    else if (key == "nosnaptrim")
-      return prepare_set_flag(op, CEPH_OSDMAP_NOSNAPTRIM);
-    else if (key == "sortbitwise") {
-      return prepare_set_flag(op, CEPH_OSDMAP_SORTBITWISE);
-    } else if (key == "recovery_deletes") {
-      if (!osdmap.get_num_up_osds() && sure != "--yes-i-really-mean-it") {
-        ss << "Not advisable to continue since no OSDs are up. Pass "
-           << "--yes-i-really-mean-it if you really wish to continue.";
-        err = -EPERM;
-        goto reply;
-      }
-      if (HAVE_FEATURE(osdmap.get_up_osd_features(), OSD_RECOVERY_DELETES)
-          || sure == "--yes-i-really-mean-it") {
-	return prepare_set_flag(op, CEPH_OSDMAP_RECOVERY_DELETES);
-      } else {
-	ss << "not all up OSDs have OSD_RECOVERY_DELETES feature";
-	err = -EPERM;
-	goto reply;
-      }
-    } else if (key == "require_jewel_osds") {
-      if (!osdmap.get_num_up_osds() && sure != "--yes-i-really-mean-it") {
-        ss << "Not advisable to continue since no OSDs are up. Pass "
-           << "--yes-i-really-mean-it if you really wish to continue.";
-        err = -EPERM;
-        goto reply;
-      }
-      if (!osdmap.test_flag(CEPH_OSDMAP_SORTBITWISE)) {
-	ss << "the sortbitwise flag must be set before require_jewel_osds";
-	err = -EPERM;
-	goto reply;
-      } else if (osdmap.require_osd_release >= CEPH_RELEASE_JEWEL) {
-	ss << "require_osd_release is already >= jewel";
-	err = 0;
-	goto reply;
-      } else if (HAVE_FEATURE(osdmap.get_up_osd_features(), SERVER_JEWEL)
-                 || sure == "--yes-i-really-mean-it") {
-	return prepare_set_flag(op, CEPH_OSDMAP_REQUIRE_JEWEL);
-      } else {
-	ss << "not all up OSDs have CEPH_FEATURE_SERVER_JEWEL feature";
-	err = -EPERM;
-      }
-    } else if (key == "require_kraken_osds") {
-      if (!osdmap.get_num_up_osds() && sure != "--yes-i-really-mean-it") {
-        ss << "Not advisable to continue since no OSDs are up. Pass "
-           << "--yes-i-really-mean-it if you really wish to continue.";
-        err = -EPERM;
-        goto reply;
-      }
-      if (!osdmap.test_flag(CEPH_OSDMAP_SORTBITWISE)) {
-	ss << "the sortbitwise flag must be set before require_kraken_osds";
-	err = -EPERM;
-	goto reply;
-      } else if (osdmap.require_osd_release >= CEPH_RELEASE_KRAKEN) {
-	ss << "require_osd_release is already >= kraken";
-	err = 0;
-	goto reply;
-      } else if (HAVE_FEATURE(osdmap.get_up_osd_features(), SERVER_KRAKEN)
-                 || sure == "--yes-i-really-mean-it") {
-	bool r = prepare_set_flag(op, CEPH_OSDMAP_REQUIRE_KRAKEN);
-	// ensure JEWEL is also set
-	pending_inc.new_flags |= CEPH_OSDMAP_REQUIRE_JEWEL;
-	return r;
-      } else {
-	ss << "not all up OSDs have CEPH_FEATURE_SERVER_KRAKEN feature";
-	err = -EPERM;
-      }
-    } else {
-      ss << "unrecognized flag '" << key << "'";
-      err = -EINVAL;
+  } else if (prefix == "osd set") { 
+
+    ceph::cmd_osd::cmd_osd_change_flag sf(*this, op, cmdmap, ss);
+
+    err = static_cast<int>(sf.set_flags());
+
+    using ceph::cmd_osd::flag_result_t;
+    if (flag_result_t::ok == static_cast<flag_result_t>(err)) {
+        return true;
     }
 
-  } else if (prefix == "osd unset") {
-    string key;
-    cmd_getval(cct, cmdmap, "key", key);
-    if (key == "full")
-      return prepare_unset_flag(op, CEPH_OSDMAP_FULL);
-    else if (key == "pause")
-      return prepare_unset_flag(op, CEPH_OSDMAP_PAUSERD | CEPH_OSDMAP_PAUSEWR);
-    else if (key == "noup")
-      return prepare_unset_flag(op, CEPH_OSDMAP_NOUP);
-    else if (key == "nodown")
-      return prepare_unset_flag(op, CEPH_OSDMAP_NODOWN);
-    else if (key == "noout")
-      return prepare_unset_flag(op, CEPH_OSDMAP_NOOUT);
-    else if (key == "noin")
-      return prepare_unset_flag(op, CEPH_OSDMAP_NOIN);
-    else if (key == "nobackfill")
-      return prepare_unset_flag(op, CEPH_OSDMAP_NOBACKFILL);
-    else if (key == "norebalance")
-      return prepare_unset_flag(op, CEPH_OSDMAP_NOREBALANCE);
-    else if (key == "norecover")
-      return prepare_unset_flag(op, CEPH_OSDMAP_NORECOVER);
-    else if (key == "noscrub")
-      return prepare_unset_flag(op, CEPH_OSDMAP_NOSCRUB);
-    else if (key == "nodeep-scrub")
-      return prepare_unset_flag(op, CEPH_OSDMAP_NODEEP_SCRUB);
-    else if (key == "notieragent")
-      return prepare_unset_flag(op, CEPH_OSDMAP_NOTIERAGENT);
-    else if (key == "nosnaptrim")
-      return prepare_unset_flag(op, CEPH_OSDMAP_NOSNAPTRIM);
-    else {
-      ss << "unrecognized flag '" << key << "'";
-      err = -EINVAL;
+    goto reply;
+
+  } else if (prefix == "osd unset") { 
+
+    ceph::cmd_osd::cmd_osd_change_flag sf(*this, op, cmdmap, ss);
+
+    err = static_cast<int>(sf.unset_flags());
+
+    using ceph::cmd_osd::flag_result_t;
+    if (flag_result_t::ok == static_cast<flag_result_t>(err)) {
+        return true;
     }
+
+    goto reply;
 
   } else if (prefix == "osd require-osd-release") {
     string release;

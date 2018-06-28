@@ -248,6 +248,10 @@ public:
     FAST_READ_DEFAULT
   };
 
+  // Allow indirect access to some commands:
+public:
+  class command_projection;
+
   // svc
 public:
   void create_initial() override;
@@ -476,6 +480,12 @@ private:
   int lookup_pruned_snap(int64_t pool, snapid_t snap,
 			 snapid_t *begin, snapid_t *end);
 
+
+  void set_pending_flag(MonOpRequestRef op, const int flag);
+  void unset_pending_flag(MonOpRequestRef op, const int flag);
+  void set_pending_flags(MonOpRequestRef op, const std::vector<int>& flags);
+  void unset_pending_flags(MonOpRequestRef op, const std::vector<int>& flags);
+  void wait_for_finished_command_proposal(MonOpRequestRef op, const std::string& msg);
   bool prepare_set_flag(MonOpRequestRef op, int flag);
   bool prepare_unset_flag(MonOpRequestRef op, int flag);
 
@@ -686,6 +696,37 @@ public:
       pending_inc.new_flags &= ~flag;
     }
   }
+};
+
+namespace ceph::cmd_osd {
+
+struct cmd_osd_change_flag;
+
+} // namespace ceph::cmd_osd
+
+// Expose only selected internal members:
+class OSDMonitor::command_projection : private OSDMonitor
+{
+ // Allow access:
+ friend class ceph::cmd_osd::cmd_osd_change_flag;	
+
+ // Expose types here:
+
+ // Expose data members (against an instance):
+ static auto& cct(OSDMonitor& osdmon) { return osdmon.cct; }
+
+ // Expose member functions (against an instance):
+ static void set_pending_flags(OSDMonitor& osdmon, MonOpRequestRef op, const std::vector<int>& flags) 
+    { return osdmon.set_pending_flags(op, flags); }
+ static void unset_pending_flags(OSDMonitor& osdmon, MonOpRequestRef op, const std::vector<int>& flags) 
+    { return osdmon.unset_pending_flags(op, flags); }
+ static void wait_for_finished_command_proposal(OSDMonitor& osdmon, MonOpRequestRef op, const std::string& msg)
+    { return osdmon.wait_for_finished_command_proposal(op, msg); }
+
+ static bool prepare_set_flag(OSDMonitor& osdmon, MonOpRequestRef op, int flag)    
+    { return osdmon.prepare_set_flag(op, flag); }
+ static bool prepare_unset_flag(OSDMonitor& osdmon, MonOpRequestRef op, int flag)  
+    { return osdmon.prepare_unset_flag(op, flag); }
 };
 
 #endif
