@@ -350,32 +350,32 @@ void MDCache::init_layouts()
   default_log_layout = gen_default_log_layout(*(mds->mdsmap));
 }
 
-void MDCache::create_unlinked_system_inode(CInode *in, inodeno_t ino,
-                                              int mode) const
+void MDCache::create_unlinked_system_inode(CInode *in, inodeno_t ino, int mode) const
 {
-  in->inode.ino = ino;
-  in->inode.version = 1;
-  in->inode.xattr_version = 1;
-  in->inode.mode = 0500 | mode;
-  in->inode.size = 0;
-  in->inode.ctime = 
-    in->inode.mtime =
-    in->inode.btime = ceph_clock_now();
-  in->inode.nlink = 1;
-  in->inode.truncate_size = -1ull;
-  in->inode.change_attr = 0;
-  in->inode.export_pin = MDS_RANK_NONE;
+  auto inode = in->_get_inode();
+  inode->ino = ino;
+  inode->version = 1;
+  inode->xattr_version = 1;
+  inode->mode = 0500 | mode;
+  inode->size = 0;
+  inode->ctime =
+    inode->mtime =
+    inode->btime = ceph_clock_now();
+  inode->nlink = 1;
+  inode->truncate_size = -1ull;
+  inode->change_attr = 0;
+  inode->export_pin = MDS_RANK_NONE;
 
-  memset(&in->inode.dir_layout, 0, sizeof(in->inode.dir_layout));
-  if (in->inode.is_dir()) {
-    in->inode.dir_layout.dl_dir_hash = g_conf()->mds_default_dir_hash;
-    in->inode.rstat.rsubdirs = 1; /* itself */
+  memset(&inode->dir_layout, 0, sizeof(inode->dir_layout));
+  if (inode->is_dir()) {
+    inode->dir_layout.dl_dir_hash = g_conf()->mds_default_dir_hash;
+    ++inode->rstat.rsubdirs;
     in->inode.rstat.rctime = in->inode.ctime;
   } else {
-    in->inode.layout = default_file_layout;
-    ++in->inode.rstat.rfiles;
+    inode->layout = default_file_layout;
+    ++inode->rstat.rfiles;
   }
-  in->inode.accounted_rstat = in->inode.rstat;
+  inode->accounted_rstat = inode->rstat;
 
   if (in->is_base()) {
     if (in->is_root())
@@ -399,12 +399,13 @@ CInode *MDCache::create_system_inode(inodeno_t ino, int mode)
 
 CInode *MDCache::create_root_inode()
 {
-  CInode *i = create_system_inode(MDS_INO_ROOT, S_IFDIR|0755);
-  i->inode.uid = g_conf()->mds_root_ino_uid;
-  i->inode.gid = g_conf()->mds_root_ino_gid;
-  i->inode.layout = default_file_layout;
-  i->inode.layout.pool_id = mds->mdsmap->get_first_data_pool();
-  return i;
+  CInode *in = create_system_inode(MDS_INO_ROOT, S_IFDIR|0755);
+  auto inode = in->_get_inode();
+  inode->uid = g_conf()->mds_root_ino_uid;
+  inode->gid = g_conf()->mds_root_ino_gid;
+  inode->layout = default_file_layout;
+  inode->layout.pool_id = mds->mdsmap->get_first_data_pool();
+  return in;
 }
 
 void MDCache::create_empty_hierarchy(MDSGather *gather)
@@ -428,10 +429,7 @@ void MDCache::create_empty_hierarchy(MDSGather *gather)
   rootdir->mark_dirty(rootdir->pre_dirty(), mds->mdlog->get_current_segment());
   rootdir->commit(0, gather->new_sub());
 
-  root->mark_clean();
-  root->mark_dirty(root->pre_dirty(), mds->mdlog->get_current_segment());
-  root->mark_dirty_parent(mds->mdlog->get_current_segment(), true);
-  root->flush(gather->new_sub());
+  root->store(gather->new_sub());
 }
 
 void MDCache::create_mydir_hierarchy(MDSGather *gather)
@@ -453,9 +451,9 @@ void MDCache::create_mydir_hierarchy(MDSGather *gather)
     CDentry *sdn = mydir->add_primary_dentry(name.str(), stray);
     sdn->_mark_dirty(mds->mdlog->get_current_segment());
 
-    stray->inode.dirstat = straydir->fnode.fragstat;
+    stray->_get_inode()->dirstat = straydir->fnode.fragstat;
 
-    mydir->fnode.rstat.add(stray->inode.rstat);
+    mydir->fnode.rstat.add(stray->get_inode()->rstat);
     mydir->fnode.fragstat.nsubdirs++;
     // save them
     straydir->mark_complete();
@@ -468,10 +466,11 @@ void MDCache::create_mydir_hierarchy(MDSGather *gather)
   mydir->fnode.accounted_fragstat = mydir->fnode.fragstat;
   mydir->fnode.accounted_rstat = mydir->fnode.rstat;
 
-  myin->inode.dirstat = mydir->fnode.fragstat;
-  myin->inode.rstat = mydir->fnode.rstat;
-  ++myin->inode.rstat.rsubdirs;
-  myin->inode.accounted_rstat = myin->inode.rstat;
+  auto inode = myin->_get_inode();
+  inode->dirstat = mydir->fnode.fragstat;
+  inode->rstat = mydir->fnode.rstat;
+  ++inode->rstat.rsubdirs;
+  inode->accounted_rstat = inode->rstat;
 
   mydir->mark_complete();
   mydir->mark_dirty(mydir->pre_dirty(), ls);
@@ -501,15 +500,16 @@ void MDCache::_create_system_file(CDir *dir, const char *name, CInode *in, MDSIn
   version_t dpv = dn->pre_dirty();
   
   CDir *mdir = 0;
-  if (in->inode.is_dir()) {
-    in->inode.rstat.rsubdirs = 1;
+  auto inode = in->_get_inode();
+  if (in->is_dir()) {
+    inode->rstat.rsubdirs = 1;
 
     mdir = in->get_or_open_dirfrag(this, frag_t());
     mdir->mark_complete();
     mdir->pre_dirty();
   } else
-    in->inode.rstat.rfiles = 1;
-  in->inode.version = dn->pre_dirty();
+    inode->rstat.rfiles = 1;
+  inode->version = dn->pre_dirty();
   
   SnapRealm *realm = dir->get_inode()->find_snaprealm();
   dn->first = in->first = realm->get_newest_seq() + 1;
@@ -549,10 +549,9 @@ void MDCache::_create_system_file_finish(MutationRef& mut, CDentry *dn, version_
   dn->mark_dirty(dpv, mut->ls);
 
   CInode *in = dn->get_linkage()->get_inode();
-  in->inode.version--;
-  in->mark_dirty(in->inode.version + 1, mut->ls);
+  in->mark_dirty(mut->ls);
 
-  if (in->inode.is_dir()) {
+  if (in->is_dir()) {
     CDir *dir = in->get_dirfrag(frag_t());
     ceph_assert(dir);
     dir->mark_dirty(1, mut->ls);
@@ -1503,11 +1502,14 @@ CInode *MDCache::cow_inode(CInode *in, snapid_t last)
 {
   ceph_assert(last >= in->first);
 
-  CInode *oldin = new CInode(this, true, in->first, last);
-  oldin->inode = *in->get_previous_projected_inode();
-  oldin->xattrs = *in->get_previous_projected_xattrs();
+  CInode *oldin = new CInode(this, in->first, last, CInode::NULL_INODE);
+  auto inode = new CInode::refcounted_inode(*in->get_previous_projected_inode());
+  inode->trim_client_ranges(last);
+  oldin->reset_inode(inode, false);
+  oldin->reset_xattrs(in->get_previous_projected_xattrs());
+
   oldin->symlink = in->symlink;
-  oldin->inode.trim_client_ranges(last);
+  inode->trim_client_ranges(last);
 
   if (in->first < in->oldest_snap)
     in->oldest_snap = in->first;
@@ -1683,7 +1685,7 @@ void MDCache::journal_cow_dentry(MutationImpl *mut, EMetaBlob *metablob,
       if (pcow_inode)
 	*pcow_inode = oldin;
       CDentry *olddn = dn->dir->add_primary_dentry(dn->get_name(), oldin, oldfirst, follows);
-      oldin->inode.version = olddn->pre_dirty();
+      oldin->_get_inode()->version = olddn->pre_dirty();
       dout(10) << " olddn " << *olddn << dendl;
       bool need_snapflush = !oldin->client_snap_caps.empty();
       if (need_snapflush) {
@@ -1742,7 +1744,6 @@ void MDCache::project_rstat_inode_to_frag(CInode *cur, CDir *parent, snapid_t fi
 					  int linkunlink, SnapRealm *prealm)
 {
   CDentry *parentdn = cur->get_projected_parent_dn();
-  CInode::mempool_inode *curi = cur->get_projected_inode();
 
   if (cur->first > first)
     first = cur->first;
@@ -1780,7 +1781,19 @@ void MDCache::project_rstat_inode_to_frag(CInode *cur, CDir *parent, snapid_t fi
       ceph_assert(cur->is_frozen_inode());
       update = false;
     }
-    _project_rstat_inode_to_frag(*curi, std::max(first, floor), cur->last, parent,
+    // hacky
+    CInode::mempool_inode *pi;
+    if (update) {
+      if (cur->is_projected()) {
+	pi = cur->_get_projected_inode();
+      } else {
+	ceph_assert(!cur->get_parent_dn() && linkunlink > 0); // new inode
+	pi = cur->_get_inode();
+      }
+    } else {
+      pi = const_cast<CInode::refcounted_inode*>(cur->get_projected_inode());
+    }
+    _project_rstat_inode_to_frag(*pi, std::max(first, floor), cur->last, parent,
 				 linkunlink, update);
   }
 
@@ -1933,7 +1946,7 @@ void MDCache::project_rstat_frag_to_inode(nest_info_t& rstat, nest_info_t& accou
     CInode::mempool_inode *pi;
     snapid_t first;
     if (last == pin->last) {
-      pi = pin->get_projected_inode();
+      pi = pin->_get_projected_inode();
       first = std::max(ofirst, pin->first);
       if (first > pin->first) {
 	auto &old = pin->cow_old_inode(first-1, cow_head);
@@ -1991,8 +2004,8 @@ void MDCache::broadcast_quota_to_client(CInode *in, client_t exclude_ct)
   if (!in->is_auth() || in->is_frozen())
     return;
 
-  auto i = in->get_projected_inode();
-  if (!i->quota.is_enable())
+  const auto pi = in->get_projected_inode();
+  if (!pi->quota.is_enable())
     return;
 
   // creaete snaprealm for quota inode (quota was set before mimic)
@@ -2011,38 +2024,38 @@ void MDCache::broadcast_quota_to_client(CInode *in, client_t exclude_ct)
     if (exclude_ct >= 0 && exclude_ct != p.first)
       goto update;
 
-    if (cap->last_rbytes == i->rstat.rbytes &&
-        cap->last_rsize == i->rstat.rsize())
+    if (cap->last_rbytes == pi->rstat.rbytes &&
+        cap->last_rsize == pi->rstat.rsize())
       continue;
 
-    if (i->quota.max_files > 0) {
-      if (i->rstat.rsize() >= i->quota.max_files)
+    if (pi->quota.max_files > 0) {
+      if (pi->rstat.rsize() >= pi->quota.max_files)
         goto update;
 
-      if ((abs(cap->last_rsize - i->quota.max_files) >> 4) <
-          abs(cap->last_rsize - i->rstat.rsize()))
+      if ((abs(cap->last_rsize - pi->quota.max_files) >> 4) <
+          abs(cap->last_rsize - pi->rstat.rsize()))
         goto update;
     }
 
-    if (i->quota.max_bytes > 0) {
-      if (i->rstat.rbytes > i->quota.max_bytes - (i->quota.max_bytes >> 3))
+    if (pi->quota.max_bytes > 0) {
+      if (pi->rstat.rbytes > pi->quota.max_bytes - (pi->quota.max_bytes >> 3))
         goto update;
 
-      if ((abs(cap->last_rbytes - i->quota.max_bytes) >> 4) <
-          abs(cap->last_rbytes - i->rstat.rbytes))
+      if ((abs(cap->last_rbytes - pi->quota.max_bytes) >> 4) <
+          abs(cap->last_rbytes - pi->rstat.rbytes))
         goto update;
     }
 
     continue;
 
 update:
-    cap->last_rsize = i->rstat.rsize();
-    cap->last_rbytes = i->rstat.rbytes;
+    cap->last_rsize = pi->rstat.rsize();
+    cap->last_rbytes = pi->rstat.rbytes;
 
     auto msg = MClientQuota::create();
     msg->ino = in->ino();
-    msg->rstat = i->rstat;
-    msg->quota = i->quota;
+    msg->rstat = pi->rstat;
+    msg->quota = pi->quota;
     mds->send_message_client_counted(msg, session->get_connection());
   }
   for (const auto &it : in->get_replicas()) {
@@ -2268,7 +2281,7 @@ void MDCache::predirty_journal_parents(MutationRef mut, EMetaBlob *blob,
 
     pin->pre_cow_old_inode();  // avoid cow mayhem!
 
-    auto &pi = pin->project_inode();
+    auto pi = pin->project_inode();
     pi.inode.version = pin->pre_dirty();
 
     // dirstat
@@ -3730,7 +3743,7 @@ bool MDCache::expire_recursive(CInode *in, expiremap &expiremap)
         /* Remote strays with linkage (i.e. hardlinks) should not be
          * expired, because they may be the target of
          * a rename() as the owning MDS shuts down */
-        if (!tin->is_stray() && tin->inode.nlink) {
+        if (!tin->is_stray() && tin->get_inode()->nlink) {
           dout(10) << __func__ << ": stray still has linkage " << *tin << dendl;
           return true;
         }
@@ -4605,8 +4618,10 @@ void MDCache::rejoin_scour_survivor_replicas(mds_rank_t from, const MMDSCacheRej
 
 CInode *MDCache::rejoin_invent_inode(inodeno_t ino, snapid_t last)
 {
-  CInode *in = new CInode(this, true, 1, last);
-  in->inode.ino = ino;
+  CInode *in = new CInode(this, 2, last);
+
+  //FIXME
+  in->_get_inode()->ino = ino;
   in->state_set(CInode::STATE_REJOINUNDEF);
   add_inode(in);
   rejoin_undef_inodes.insert(in);
@@ -4621,8 +4636,8 @@ CDir *MDCache::rejoin_invent_dirfrag(dirfrag_t df)
     in = rejoin_invent_inode(df.ino, CEPH_NOSNAP);
   if (!in->is_dir()) {
     ceph_assert(in->state_test(CInode::STATE_REJOINUNDEF));
-    in->inode.mode = S_IFDIR;
-    in->inode.dir_layout.dl_dir_hash = g_conf()->mds_default_dir_hash;
+    in->_get_inode()->mode = S_IFDIR;
+    in->_get_inode()->dir_layout.dl_dir_hash = g_conf()->mds_default_dir_hash;
   }
   CDir *dir = in->get_or_open_dirfrag(this, df.frag);
   dir->state_set(CDir::STATE_REJOINUNDEF);
@@ -4921,10 +4936,12 @@ void MDCache::handle_cache_rejoin_ack(const MMDSCacheRejoin::const_ref &ack)
       CInode *diri = get_inode(p.first.ino);
       if (!diri) {
 	// barebones inode; the full inode loop below will clean up.
-	diri = new CInode(this, false);
-	diri->inode.ino = p.first.ino;
-	diri->inode.mode = S_IFDIR;
-	diri->inode.dir_layout.dl_dir_hash = g_conf()->mds_default_dir_hash;
+	diri = new CInode(this, 2, CEPH_NOSNAP, CInode::NON_AUTH);
+	auto inode = diri->_get_inode();
+	inode->ino = p.first.ino;
+	inode->mode = S_IFDIR;
+	inode->dir_layout.dl_dir_hash = g_conf()->mds_default_dir_hash;
+
 	add_inode(diri);
 	if (MDS_INO_MDSDIR(from) == p.first.ino) {
 	  diri->inode_auth = mds_authority_t(from, CDIR_AUTH_UNKNOWN);
@@ -4984,18 +5001,19 @@ void MDCache::handle_cache_rejoin_ack(const MMDSCacheRejoin::const_ref &ack)
 	    dout(10) << " had bad linkage for " << *dn <<  dendl;
         }
 
-        // hmm, did we have the proper linkage here?
-        if (dnl->is_null() && !q.second.is_null()) {
+	// hmm, did we have the proper linkage here?
+	if (dnl->is_null() && !q.second.is_null()) {
 	  if (q.second.is_remote()) {
 	    dn->dir->link_remote_inode(dn, q.second.remote_ino, q.second.remote_d_type);
 	  } else {
 	    CInode *in = get_inode(q.second.ino, q.first.snapid);
 	    if (!in) {
 	      // barebones inode; assume it's dir, the full inode loop below will clean up.
-	      in = new CInode(this, false, q.second.first, q.first.snapid);
-	      in->inode.ino = q.second.ino;
-	      in->inode.mode = S_IFDIR;
-	      in->inode.dir_layout.dl_dir_hash = g_conf()->mds_default_dir_hash;
+	      in = new CInode(this, q.second.first, q.first.snapid, CInode::NON_AUTH);
+	      auto inode = in->_get_inode();
+	      inode->ino = q.second.ino;
+	      inode->mode = S_IFDIR;
+	      inode->dir_layout.dl_dir_hash = g_conf()->mds_default_dir_hash;
 	      add_inode(in);
 	      dout(10) << " add inode " << *in << dendl;
 	    } else if (in->get_parent_dn()) {
@@ -5006,7 +5024,7 @@ void MDCache::handle_cache_rejoin_ack(const MMDSCacheRejoin::const_ref &ack)
 	    dn->dir->link_primary_inode(dn, in);
 	    isolated_inodes.erase(in);
 	  }
-        }
+	}
 
         dn->set_replica_nonce(q.second.nonce);
         dn->lock.set_state_rejoin(q.second.lock, rejoin_waiters, survivor);
@@ -5521,7 +5539,7 @@ void MDCache::choose_lock_states_and_reconnect_caps()
     if (in->last != CEPH_NOSNAP)
       continue;
  
-    if (in->is_auth() && !in->is_base() && in->inode.is_dirty_rstat())
+    if (in->is_auth() && !in->is_base() && in->get_inode()->is_dirty_rstat())
       in->mark_dirty_rstat();
 
     int dirty_caps = 0;
@@ -5948,7 +5966,7 @@ void MDCache::opened_undef_inode(CInode *in) {
   rejoin_undef_inodes.erase(in);
   if (in->is_dir()) {
     // FIXME: re-hash dentries if necessary
-    ceph_assert(in->inode.dir_layout.dl_dir_hash == g_conf()->mds_default_dir_hash);
+    ceph_assert(in->get_inode()->dir_layout.dl_dir_hash == g_conf()->mds_default_dir_hash);
     if (in->has_dirfrags() && !in->dirfragtree.is_leaf(frag_t())) {
       CDir *dir = in->get_dirfrag(frag_t());
       ceph_assert(dir);
@@ -6263,12 +6281,10 @@ void MDCache::identify_files_to_recover()
     }
     
     bool recover = false;
-    for (map<client_t,client_writeable_range_t>::iterator p = in->inode.client_ranges.begin();
-	 p != in->inode.client_ranges.end();
-	 ++p) {
-      Capability *cap = in->get_client_cap(p->first);
+    for (auto& p : in->get_inode()->client_ranges) {
+      Capability *cap = in->get_client_cap(p.first);
       if (!cap) {
-	dout(10) << " client." << p->first << " has range " << p->second << " but no cap on " << *in << dendl;
+	dout(10) << " client." << p.first << " has range " << p.second << " but no cap on " << *in << dendl;
 	recover = true;
 	break;
       }
@@ -6329,7 +6345,7 @@ public:
 
 void MDCache::truncate_inode(CInode *in, LogSegment *ls)
 {
-  auto pi = in->get_projected_inode();
+  const auto pi = in->get_projected_inode();
   dout(10) << "truncate_inode "
 	   << pi->truncate_from << " -> " << pi->truncate_size
 	   << " on " << *in
@@ -6367,7 +6383,7 @@ struct C_IO_MDC_TruncateFinish : public MDCacheIOContext {
 
 void MDCache::_truncate_inode(CInode *in, LogSegment *ls)
 {
-  auto pi = &in->inode;
+  const auto& pi = in->get_inode();
   dout(10) << "_truncate_inode "
 	   << pi->truncate_from << " -> " << pi->truncate_size
 	   << " on " << *in << dendl;
@@ -6390,7 +6406,8 @@ void MDCache::_truncate_inode(CInode *in, LogSegment *ls)
     ceph_assert(in->last == CEPH_NOSNAP);
   }
   dout(10) << "_truncate_inode  snapc " << snapc << " on " << *in << dendl;
-  filer.truncate(in->inode.ino, &in->inode.layout, *snapc,
+  auto layout = pi->layout;
+  filer.truncate(in->ino(), &layout, *snapc,
 		 pi->truncate_size, pi->truncate_from-pi->truncate_size,
 		 pi->truncate_seq, ceph::real_time::min(), 0,
 		 new C_OnFinisher(new C_IO_MDC_TruncateFinish(this, in, ls),
@@ -6416,7 +6433,7 @@ void MDCache::truncate_inode_finish(CInode *in, LogSegment *ls)
   ls->truncating_inodes.erase(p);
 
   // update
-  auto &pi = in->project_inode();
+  auto pi = in->project_inode();
   pi.inode.version = in->pre_dirty();
   pi.inode.truncate_from = 0;
   pi.inode.truncate_pending--;
@@ -8843,7 +8860,7 @@ void MDCache::handle_open_ino(const MMDSOpenIno::const_ref &m, int err)
 	  break;
 	CInode *diri = pdn->get_dir()->get_inode();
 	reply->ancestors.push_back(inode_backpointer_t(diri->ino(), pdn->get_name(),
-						       in->inode.version));
+						       in->get_version()));
 	in = diri;
       }
     } else {
@@ -9680,7 +9697,7 @@ void MDCache::scan_stray_dir(dirfrag_t next)
       CDentry::linkage_t *dnl = dn->get_projected_linkage();
       if (dnl->is_primary()) {
 	CInode *in = dnl->get_inode();
-	if (in->inode.nlink == 0)
+	if (in->get_inode()->nlink == 0)
 	  in->state_set(CInode::STATE_ORPHAN);
 	maybe_eval_stray(in);
       }
@@ -10350,7 +10367,7 @@ void MDCache::replicate_dentry(CDentry *dn, mds_rank_t to, bufferlist& bl)
 void MDCache::replicate_inode(CInode *in, mds_rank_t to, bufferlist& bl,
 			      uint64_t features)
 {
-  encode(in->inode.ino, bl);  // bleh, minor assymetry here
+  encode(in->ino(), bl);  // bleh, minor assymetry here
   encode(in->last, bl);
   in->encode_replica(to, bl, features, mds->get_state() < MDSMap::STATE_ACTIVE);
 }
@@ -10429,7 +10446,7 @@ CInode *MDCache::add_replica_inode(bufferlist::const_iterator& p, CDentry *dn, M
   decode(last, p);
   CInode *in = get_inode(ino, last);
   if (!in) {
-    in = new CInode(this, false, 1, last);
+    in = new CInode(this, 2, last, CInode::NON_AUTH);
     in->decode_replica(p, true);
     add_inode(in);
     if (in->ino() == MDS_INO_ROOT)
@@ -11442,7 +11459,7 @@ void MDCache::dispatch_fragment_dir(MDRequestRef& mdr)
   // dft lock
   if (diri->is_auth()) {
     // journal dirfragtree
-    auto &pi = diri->project_inode();
+    auto pi = diri->project_inode();
     pi.inode.version = diri->pre_dirty();
     journal_dirty_inode(mdr.get(), &le->metablob, diri);
   } else {
@@ -11801,7 +11818,7 @@ void MDCache::rollback_uncommitted_fragments()
     }
 
     if (diri_auth) {
-      auto &pi = diri->project_inode();
+      auto pi = diri->project_inode();
       pi.inode.version = diri->pre_dirty();
       diri->pop_and_dirty_projected_inode(ls); // hacky
       le->metablob.add_primary_dentry(diri->get_projected_parent_dn(), diri, true);
@@ -12524,8 +12541,8 @@ do_rdlocks:
     nest_info.add(dir->fnode.accounted_rstat);
   }
 
-  if (!dir_info.same_sums(diri->inode.dirstat) ||
-      !nest_info.same_sums(diri->inode.rstat)) {
+  if (!dir_info.same_sums(diri->get_inode()->dirstat) ||
+      !nest_info.same_sums(diri->get_inode()->rstat)) {
     dout(10) << __func__ << " failed to fix fragstat/rstat on "
 	     << *diri << dendl;
   }
@@ -12561,7 +12578,7 @@ void MDCache::upgrade_inode_snaprealm_work(MDRequestRef& mdr)
     return;
 
   // project_snaprealm() upgrades snaprealm format
-  auto &pi = in->project_inode(false, true);
+  auto pi = in->project_inode(false, true);
   mdr->add_projected_inode(in);
   pi.inode.version = in->pre_dirty();
 
@@ -12711,7 +12728,7 @@ void MDCache::activate_stray_manager()
  *              away.
  */
 void MDCache::maybe_eval_stray(CInode *in, bool delay) {
-  if (in->inode.nlink > 0 || in->is_base() || is_readonly() ||
+  if (in->get_inode()->nlink > 0 || in->is_base() || is_readonly() ||
       mds->get_state() <= MDSMap::STATE_REJOIN)
     return;
 

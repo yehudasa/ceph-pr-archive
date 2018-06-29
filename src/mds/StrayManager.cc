@@ -101,7 +101,7 @@ void StrayManager::purge(CDentry *dn)
   SnapContext nullsnapc;
 
   PurgeItem item;
-  item.ino = in->inode.ino;
+  item.ino = in->ino();
   item.stamp = ceph_clock_now();
   if (in->is_dir()) {
     item.action = PurgeItem::PURGE_DIR;
@@ -120,17 +120,16 @@ void StrayManager::purge(CDentry *dn)
       ceph_assert(in->last == CEPH_NOSNAP);
     }
 
+    const auto pi = in->get_projected_inode();
+
     uint64_t to = 0;
     if (in->is_file()) {
-      to = in->inode.get_max_size();
-      to = std::max(in->inode.size, to);
+      to = std::max(pi->size, pi->get_max_size());
       // when truncating a file, the filer does not delete stripe objects that are
       // truncated to zero. so we need to purge stripe objects up to the max size
       // the file has ever been.
-      to = std::max(in->inode.max_size_ever, to);
+      to = std::max(pi->max_size_ever, to);
     }
-
-    auto pi = in->get_projected_inode();
 
     item.size = to;
     item.layout = pi->layout;
@@ -182,7 +181,7 @@ void StrayManager::_purge_stray_purged(
     EUpdate *le = new EUpdate(mds->mdlog, "purge_stray truncate");
     mds->mdlog->start_entry(le);
     
-    auto &pi = in->project_inode();
+    auto pi = in->project_inode();
     pi.inode.size = 0;
     pi.inode.max_size_ever = 0;
     pi.inode.client_ranges.clear();
@@ -221,7 +220,7 @@ void StrayManager::_purge_stray_purged(
       pf->fragstat.nsubdirs--;
     else
       pf->fragstat.nfiles--;
-    pf->rstat.sub(in->inode.accounted_rstat);
+    pf->rstat.sub(in->get_inode()->accounted_rstat);
 
     le->metablob.add_dir_context(dn->dir);
     EMetaBlob::dirlump& dl = le->metablob.add_dir(dn->dir, true);
@@ -446,7 +445,7 @@ bool StrayManager::_eval_stray(CDentry *dn, bool delay)
   }
 
   // purge?
-  if (in->inode.nlink == 0) {
+  if (in->get_inode()->nlink == 0) {
     // past snaprealm parents imply snapped dentry remote links.
     // only important for directories.  normal file data snaps are handled
     // by the object store.
@@ -610,7 +609,7 @@ void StrayManager::_eval_stray_remote(CDentry *stray_dn, CDentry *remote_dn)
   CDentry::linkage_t *stray_dnl = stray_dn->get_projected_linkage();
   ceph_assert(stray_dnl->is_primary());
   CInode *stray_in = stray_dnl->get_inode();
-  ceph_assert(stray_in->inode.nlink >= 1);
+  ceph_assert(stray_in->get_inode()->nlink >= 1);
   ceph_assert(stray_in->last == CEPH_NOSNAP);
 
   /* If no remote_dn hinted, pick one arbitrarily */
@@ -682,7 +681,7 @@ void StrayManager::migrate_stray(CDentry *dn, mds_rank_t to)
   ceph_assert(in);
   CInode *diri = dn->dir->get_inode();
   ceph_assert(diri->is_stray());
-  dout(10) << "migrate_stray from mds." << MDS_INO_STRAY_OWNER(diri->inode.ino)
+  dout(10) << "migrate_stray from mds." << MDS_INO_STRAY_OWNER(diri->ino())
 	   << " to mds." << to
 	   << " " << *dn << " " << *in << dendl;
 
@@ -727,19 +726,18 @@ void StrayManager::truncate(CDentry *dn)
   dout(10) << " realm " << *realm << dendl;
   const SnapContext *snapc = &realm->get_snap_context();
 
-  uint64_t to = in->inode.get_max_size();
-  to = std::max(in->inode.size, to);
+  uint64_t to = std::max(in->get_inode()->size, in->get_inode()->get_max_size());
   // when truncating a file, the filer does not delete stripe objects that are
   // truncated to zero. so we need to purge stripe objects up to the max size
   // the file has ever been.
-  to = std::max(in->inode.max_size_ever, to);
+  to = std::max(in->get_inode()->max_size_ever, to);
 
   ceph_assert(to > 0);
 
   PurgeItem item;
   item.action = PurgeItem::TRUNCATE_FILE;
-  item.ino = in->inode.ino;
-  item.layout = in->inode.layout;
+  item.ino = in->ino();
+  item.layout = in->get_inode()->layout;
   item.snapc = *snapc;
   item.size = to;
   item.stamp = ceph_clock_now();
