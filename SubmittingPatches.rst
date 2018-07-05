@@ -294,16 +294,10 @@ A: The target branch depends on the nature of your change:
    the master branch will contain your fix as well.
 
    If you are fixing a bug (see above) *and* the bug exists in older stable
-   branches (for example, the "hammer" or "infernalis" branches), then you
-   should file a Redmine ticket describing your issue and fill out the
-   "Backport: <branchname>" form field. This will notify other developers that
-   your commit should be cherry-picked to one or more stable branches. Then,
-   target the "master" branch in your pull request.
-
-   For example, you should set "Backport: jewel, kraken" in your Redmine ticket
-   to indicate that you are fixing a bug that exists on the "jewel" and
-   "kraken" branches and that you desire that your change be cherry-picked to
-   those branches after it is merged into master.
+   branches (for example, the "hammer" or "infernalis" branches), your initial
+   PR should still target the master branch. Please see the `BACKPORTING`_
+   section, below, for information on how to ensure your bugfix gets
+   backported.
 
 Q: How to include ``Reviewed-by: tag(s)`` in my pull request?
 
@@ -518,4 +512,135 @@ decreasing the likelihood of your MIME-attached change being accepted.
 
 Exception: If your mailer is mangling patches then someone may ask
 you to re-send them using MIME.
+
+
+BACKPORTING
+===========
+
+Ceph has a `Stable Releases and Backports`_ team, staffed by volunteers,
+which is charged with maintaining the stable releases and backporting bugfixes
+from the master branch to them.
+
+Even if your objective is to get a bugfix into a stable release, your initial
+PR still needs to target master.
+
+.. _`Stable Releases and Backports`: http://tracker.ceph.com/projects/ceph-releases/wiki
+
+Backport tracking
+-----------------
+
+Bugfixes for which backports are needed/desired need to be tracked.
+Anyone can open an account at https://tracker.ceph.com and open bugs in the
+"Ceph" project. When opening the bug, fill in the "Backport" field with a
+comma- or space-separated list of releases, e.g. ::
+
+    Backport: mimic,luminous
+
+This will notify other developers that your bugfix should be cherry-picked to
+one or more stable branches after it has been merged into master.
+
+(If the Backport field is empty and you don't have
+sufficient Redmine privileges to fill it, just leave a comment asking for what
+you want done, and one of the developers will follow up.)
+
+Then, target the "master" branch in your pull request. Make sure you reference
+the tracker issue in the commit message of your fix. This is covered in the
+section `Tag the commit`_.
+
+When the pull request is merged, the developer who performed the merge will
+change the tracker status to "Pending Backport" and, in due course, backport
+tracker issues will be created for each of the stable branches for which
+backports were requested in the issue. If you get tired of waiting for the
+backport tracker issues to appear, ping the reviewers in the PR or on IRC.
+
+Backport staging
+----------------
+
+Backports can be staged for bugfixes that have been merged into master,
+provided the relevant backport tracker issues have been created. Do not stage
+backport PRs for any commit that has not yet been merged to master.
+
+Role of backporting team
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+Ordinarily, it is enough to fill out the "Backport" field in the bug (tracker
+issue). The volunteers from the Stable Releases and Backports team will
+backport the fix, run regression tests on it, and include it in one or more
+future point releases.
+
+Sometimes bugfix authors are motivated to stage the backport PR(s) themselves.
+Here's how to do that.
+
+Cherry-picking instructions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+If you want to stage the backport yourself, first find out the backport tracker
+number of the fix (see `Backport tracking`_, above) by referring to the
+"Related issues" section of the bug's tracker issue.
+
+Then, create a branch based on the stable branch you are targeting. For backport
+tracker number 24735 targeting luminous, for example::
+
+    git fetch ceph
+    git checkout -b wip-24735-luminous ceph/luminous
+
+Next, cherry-pick the master commit(s). Be sure to include the ``-x`` switch.
+For example, to cherry-pick master commit 0123456789abcdef ::
+
+    git cherry-pick -x 0123456789abcdef
+
+Conflict resolution
+^^^^^^^^^^^^^^^^^^^
+
+If git reports conflicts, resolve them manually. If you don't know how to
+resolve the conflicts, ask for help or just relax and let the Stable Releases
+and Backports team take care of the backporting work.
+
+Once the conflicts are resolved, complete the cherry-pick ::
+
+    git cherry-pick --continue
+
+At this point, it is very important to uncomment the entire "Conflicts" section
+of the commit message before committing the cherry-pick. It's also a very good
+idea to include commentary on what the conflicts were and how you resolved
+them. When editing the cherry-pick commit message, leave everything before the
+"cherry picked from" line unchanged. Any edits you make should be in the part
+following that line.  Here is a real-world example ::
+
+    os/bluestore: don't store/use path_block.{db,wal} from meta
+
+    This reverts most of 8d07fa5ad0772b4d979dc10695d230074d1f1e69.
+
+    ceph-volume goes to great lengths to ensure that the symlinks in the
+    osd dir are accurate.  Having these values here is an opportunity to
+    get them out of sync.  And that can happen very easily if the initial
+    mkfs was performed using a /dev/sdX device name (which is unstable
+    across reboots).  Even after ceph-volume corrects the symlink, bluestore
+    will continue to use the stale device path.
+
+    Signed-off-by: Sage Weil <sage@redhat.com>
+    (cherry picked from commit ef510e43f0ee14b49e99beed9ae8feda6db3429a)
+
+    Conflicts:
+           src/os/bluestore/BlueStore.cc
+
+    - add_block_device has an extra arg in newer code
+
+All the lines up to and including the "Signed-off-by" line are copied verbatim
+from the master commit, which is mentioned in the "cherry picked from" line.
+All the lines after that one were added as part of the cherry-picking process.
+The person performing the cherry-pick uncommented the "Conflicts" section
+generated by git and added commentary at the end.
+
+When NOT to cherry-pick
+^^^^^^^^^^^^^^^^^^^^^^^
+
+In some (rare) cases, it is not possible to cherry-pick a bugfix from master,
+yet the bug still needs to be fixed in a stable branch. In such cases there
+is no other option but to fix the bug manually. In such cases, be sure to
+include in the commit message an explanation why the fix could not be
+cherry-picked from master. For example ::
+
+    This bugfix could not be cherry-picked from master because
+    the foobar code was completely reworked after the mimic release.
 
