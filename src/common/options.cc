@@ -4995,7 +4995,11 @@ std::vector<Option> get_global_options() {
     .set_description("Method used to predict device failures")
     .set_long_description("To disable prediction, use 'none',  'local' uses a prediction model that runs inside the mgr daemon.  'cloud' will share metrics with a cloud service and query the service for devicelife expectancy."),
 
-
+    Option("osdc_thread_count", Option::TYPE_UINT, Option::LEVEL_ADVANCED)
+    .set_default(2)
+    .set_min(1)
+    .set_description("Size of thread pool for Objecter")
+    .add_tag("client")
   });
 }
 

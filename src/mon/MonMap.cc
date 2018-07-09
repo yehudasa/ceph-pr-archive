@@ -498,7 +498,7 @@ int MonMap::init_with_config_file(const ConfigProxy& conf,
 
 using namespace seastar;
 
-future<> MonMap::read_monmap(const std::string& monmap)
+seastar::future<> MonMap::read_monmap(const std::string& monmap)
 {
   return open_file_dma(monmap, open_flags::ro).then([this] (file f) {
     return f.size().then([this, f = std::move(f)](size_t s) {
@@ -513,7 +513,7 @@ future<> MonMap::read_monmap(const std::string& monmap)
   });
 }
 
-future<> MonMap::init_with_dns_srv(const std::string& name)
+seastar::future<> MonMap::init_with_dns_srv(const std::string& name)
 {
   string domain;
   string service = name;
@@ -585,7 +585,7 @@ seastar::future<> MonMap::build_monmap(const ceph::common::ConfigProxy& conf)
   });
 }
 
-future<> MonMap::build_initial(const ceph::common::ConfigProxy& conf)
+seastar::future<> MonMap::build_initial(const ceph::common::ConfigProxy& conf)
 {
   // file?
   if (const auto monmap = conf.get_val<std::string>("monmap");

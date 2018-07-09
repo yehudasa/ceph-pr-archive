@@ -17,6 +17,7 @@
 
 #include <string_view>
 
+#include "common/asio_misc.h"
 #include "common/DecayCounter.h"
 #include "common/LogClient.h"
 #include "common/Timer.h"
@@ -170,6 +171,7 @@ class MDSRank {
 
     std::unique_ptr<MDSMap> &mdsmap; /* MDSDaemon::mdsmap */
 
+    ceph::io_context_pool ctxpool;
     Objecter     *objecter;
 
     // sub systems
