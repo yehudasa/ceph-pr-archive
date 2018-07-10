@@ -15,6 +15,8 @@
 #ifndef CEPH_LIBRADOS_POOLASYNCCOMPLETIONIMPL_H
 #define CEPH_LIBRADOS_POOLASYNCCOMPLETIONIMPL_H
 
+#include <boost/intrusive_ptr.hpp>
+
 #include "common/Cond.h"
 #include "common/Mutex.h"
 #include "include/Context.h"
@@ -87,18 +89,23 @@ namespace librados {
     }
   };
 
-  class C_PoolAsync_Safe : public Context {
-    PoolAsyncCompletionImpl *c;
+  inline void intrusive_ptr_add_ref(PoolAsyncCompletionImpl* p) {
+    p->get();
+  }
+  inline void intrusive_ptr_release(PoolAsyncCompletionImpl* p) {
+    p->put();
+  }
+
+  class CB_PoolAsync_Safe {
+    boost::intrusive_ptr<PoolAsyncCompletionImpl> p;
 
   public:
-    explicit C_PoolAsync_Safe(PoolAsyncCompletionImpl *_c) : c(_c) {
-      c->get();
-    }
-    ~C_PoolAsync_Safe() override {
-      c->put();
-    }
-  
-    void finish(int r) override {
+    explicit CB_PoolAsync_Safe(boost::intrusive_ptr<PoolAsyncCompletionImpl> p)
+      : p(p) {}
+    ~CB_PoolAsync_Safe() = default;
+
+    void operator()(int r) {
+      auto c = p.detach();
       c->lock.Lock();
       c->rval = r;
       c->done = true;
