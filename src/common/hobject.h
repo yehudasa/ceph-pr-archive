@@ -464,12 +464,6 @@ public:
     (*this) = temp;
   }
 
-  operator std::string() {
-    std::stringstream out;
-    out << this;
-    return out.str();
-  }
-
   operator std::string() const {
     std::stringstream out;
     out << this;
