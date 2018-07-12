@@ -464,11 +464,7 @@ public:
     (*this) = temp;
   }
 
-  operator std::string() const {
-    std::stringstream out;
-    out << this;
-    return out.str();
-  }
+  operator std::string() const;
 
   void encode(bufferlist& bl) const;
   void decode(bufferlist::const_iterator& bl);
