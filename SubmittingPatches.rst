@@ -279,34 +279,37 @@ So that the pull request does not contain any "merge" commit. Instead of "mergin
 the target branch, we expect a linear history in a pull request where you
 commit on top of the remote branch.
 
+Answers to some FAQs regarding GitHub PRs
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
 Q: Which branch should I target in my pull request?
 
-A: The target branch depends on the nature of your change:
+The target branch depends on the nature of your change.
 
-   If you are adding a feature, target the "master" branch in your pull
-   request.
+If you are adding a feature, target the "master" branch in your pull
+request.
 
-   If you are fixing a bug, target the named branch corresponding to the
-   major version that is currently in development. For example, if
-   Infernalis is the latest stable release and Jewel is development, target
-   the "jewel" branch for bugfixes. The Ceph core developers will
-   periodically merge this named branch into "master". When this happens,
-   the master branch will contain your fix as well.
+If you are fixing a bug, target the named branch corresponding to the
+major version that is currently in development. For example, if
+Mimic is the latest stable release and Nautilus is development, target
+the "nautilus" branch for bugfixes. The Ceph core developers will
+periodically merge this named branch into "master". When this happens,
+the master branch will contain your fix as well.
 
-   If you are fixing a bug (see above) *and* the bug exists in older stable
-   branches (for example, the "hammer" or "infernalis" branches), your initial
-   PR should still target the master branch. Please see the `BACKPORTING`_
-   section, below, for information on how to ensure your bugfix gets
-   backported.
+If you are fixing a bug (see above) *and* the bug exists in older stable
+branches (for example, the "hammer" or "infernalis" branches), your initial
+PR should still target the master branch. Please see the `BACKPORTING`_
+section, below, for information on how to ensure your bugfix gets
+backported.
 
-Q: How to include ``Reviewed-by: tag(s)`` in my pull request?
+Q: How to include ``Reviewed-by:`` tag(s) in my pull request?
 
-A: You don't. If someone reviews your pull request, they should indicate they
-   have done so by commenting on it with "+1", "looks good to me", "LGTM",
-   and/or the entire "Reviewed-by: ..." line with their name and email address.
+You don't. If someone reviews your pull request, they should indicate they
+have done so by commenting on it with "+1", "looks good to me", "LGTM",
+and/or the entire "Reviewed-by: ..." line with their name and email address.
 
-   The developer merging the pull request should note positive reviews and
-   include the appropriate Reviewed-by: lines in the merge commit.
+The developer merging the pull request should note positive reviews and
+include the appropriate Reviewed-by: lines in the merge commit.
 
 
 2. Patch submission via ceph-devel@vger.kernel.org
