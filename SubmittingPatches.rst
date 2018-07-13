@@ -522,10 +522,9 @@ BACKPORTING
 
 Ceph has a `Stable Releases and Backports`_ team, staffed by volunteers,
 which is charged with maintaining the stable releases and backporting bugfixes
-from the master branch to them.
-
-Even if your objective is to get a bugfix into a stable release, your initial
-PR still needs to target master.
+from the master branch to them. (That team maintains a wiki, accessible by
+clicking the `Stable Releases and Backports`_ link, which describes various
+workflows in the backporting lifecycle.)
 
 .. _`Stable Releases and Backports`: http://tracker.ceph.com/projects/ceph-releases/wiki
 
