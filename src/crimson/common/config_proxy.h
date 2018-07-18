@@ -45,22 +45,38 @@ class ConfigProxy : public seastar::peering_sharded_service<ConfigProxy>
       new_values->changed.clear();
       func(*new_values);
 
+      ObserverMgr<ConfigObserver>::rev_obs_map_t rev_obs;
+
       // always apply the new settings synchronously on the owner shard, to
       // avoid racings with other do_change() calls in parallel.
       owner.values.reset(new_values);
-      owner.obs_mgr.apply_changes(owner.values->changed,
-                                  owner, nullptr);
+      owner.obs_mgr.gather_changes(owner.values->changed, owner,
+                                   [&rev_obs](ConfigObserver *obs,
+                                              const std::string &key) {
+                                     rev_obs[obs].insert(key);
+                                   }, nullptr);
+      for (auto& [obs, keys] : rev_obs) {
+        obs->handle_conf_change(owner, keys);
+      }
+
+      rev_obs.clear();
 
       return seastar::parallel_for_each(boost::irange(1u, seastar::smp::count),
-                                        [&owner, new_values] (auto cpu) {
+                                        [&owner, new_values, &rev_obs] (auto cpu) {
         return owner.container().invoke_on(cpu,
-          [foreign_values = seastar::make_foreign(new_values)](ConfigProxy& proxy) mutable {
+          [foreign_values = seastar::make_foreign(new_values), &rev_obs](ConfigProxy& proxy) mutable {
             proxy.values.reset();
             proxy.values = std::move(foreign_values);
-            proxy.obs_mgr.apply_changes(proxy.values->changed,
-                                        proxy, nullptr);
+            proxy.obs_mgr.gather_changes(proxy.values->changed, proxy,
+                                         [&rev_obs](ConfigObserver *obs,
+                                                    const std::string &key) {
+                                           rev_obs[obs].insert(key);
+                                         }, nullptr);
           });
-        }).finally([new_values] {
+        }).finally([new_values, &owner, &rev_obs] {
+          for (auto& [obs, keys] : rev_obs) {
+            obs->handle_conf_change(owner, keys);
+          }
           new_values->changed.clear();
         });
       });
