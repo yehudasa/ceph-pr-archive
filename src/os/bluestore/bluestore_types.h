@@ -427,6 +427,7 @@ public:
     FLAG_CSUM = 4,            ///< blob has checksums
     FLAG_HAS_UNUSED = 8,      ///< blob has unused map
     FLAG_SHARED = 16,         ///< blob is shared; see external SharedBlob
+    FLAG_DB_OFFLOADED = 32,   //< blob content is stored at DB
   };
   static string get_flags_string(unsigned flags);
 
@@ -467,7 +468,7 @@ public:
     ceph_assert(struct_v == 1 || struct_v == 2);
     denc(extents, p);
     denc_varint(flags, p);
-    if (is_compressed()) {
+    if (is_compressed() || is_db_offloaded()) {
       denc_varint_lowz(logical_length, p);
       denc_varint_lowz(compressed_length, p);
     }
@@ -487,7 +488,7 @@ public:
     ceph_assert(struct_v == 1 || struct_v == 2);
     denc(extents, p);
     denc_varint(flags, p);
-    if (is_compressed()) {
+    if (is_compressed() || is_db_offloaded()) {
       denc_varint_lowz(logical_length, p);
       denc_varint_lowz(compressed_length, p);
     } else {
@@ -510,6 +511,7 @@ public:
     return
       !has_flag(FLAG_SHARED) &&
       !has_flag(FLAG_COMPRESSED) &&
+      !has_flag(FLAG_DB_OFFLOADED) &&
       !has_flag(FLAG_HAS_UNUSED);     // splitting unused set is complex
   }
   bool can_split_at(uint32_t blob_offset) const {
@@ -537,8 +539,16 @@ public:
     logical_length = clen_orig;
     compressed_length = clen;
   }
+  void set_db_offload(uint64_t len) {
+    set_flag(FLAG_DB_OFFLOADED);
+    logical_length = len;
+    compressed_length = 0;
+  }
+  bool is_db_offloaded() const {
+    return has_flag(FLAG_DB_OFFLOADED);
+  }
   bool is_mutable() const {
-    return !is_compressed() && !is_shared();
+    return !is_compressed() && !is_shared() && !is_db_offloaded();
   }
   bool is_compressed() const {
     return has_flag(FLAG_COMPRESSED);

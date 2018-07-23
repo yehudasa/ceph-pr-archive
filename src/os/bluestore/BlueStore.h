@@ -115,6 +115,7 @@ enum {
   l_bluestore_write_small_deferred,
   l_bluestore_write_small_pre_read,
   l_bluestore_write_small_new,
+  l_bluestore_write_db_new,
   l_bluestore_txc,
   l_bluestore_onode_reshard,
   l_bluestore_blob_split,
@@ -769,9 +770,6 @@ public:
 
     uint32_t needs_reshard_begin = 0;
     uint32_t needs_reshard_end = 0;
-
-    void dup(BlueStore* b, TransContext*, CollectionRef&, OnodeRef&, OnodeRef&,
-      uint64_t&, uint64_t&, uint64_t&);
 
     bool needs_reshard() const {
       return needs_reshard_end > needs_reshard_begin;
@@ -2274,6 +2272,7 @@ private:
 
   void _record_onode(OnodeRef &o, KeyValueDB::Transaction &txn);
 
+
   // -- ondisk version ---
 public:
   const int32_t latest_ondisk_format = 2;        ///< our version
@@ -2684,6 +2683,22 @@ private:
                           bl,
                           o0,
                           len0,
+                          _mark_unused,
+                          _new_blob);
+    }
+    void write_db(
+      uint64_t loffs,
+      BlobRef b,
+      bufferlist& bl,
+      bool _mark_unused,
+      bool _new_blob) {
+      writes.emplace_back(loffs,
+                          b,
+                          0,
+                          0,
+                          bl,
+                          0,
+                          bl.length(),
                           _mark_unused,
                           _new_blob);
     }

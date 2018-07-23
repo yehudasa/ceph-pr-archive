@@ -608,6 +608,11 @@ string bluestore_blob_t::get_flags_string(unsigned flags)
       s += '+';
     s += "shared";
   }
+  if (flags & FLAG_DB_OFFLOADED) {
+    if (s.length())
+      s += '+';
+    s += "@db";
+  }
 
   return s;
 }
@@ -875,7 +880,7 @@ bool bluestore_blob_t::release_extents(bool all,
       }
       pos += e.length;
     }
-    ceph_assert(is_compressed() || get_logical_length() == pos);
+    ceph_assert(is_compressed() || is_db_offloaded() || get_logical_length() == pos);
     extents.resize(1);
     extents[0].offset = bluestore_pextent_t::INVALID_OFFSET;
     extents[0].length = pos;
