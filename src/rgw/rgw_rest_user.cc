@@ -215,6 +215,7 @@ void RGWOp_User_Modify::execute()
 
   bool quota_set;
   int32_t max_buckets;
+  std::string op_mask_str;
 
   RGWUserAdminOpState op_state;
 
@@ -232,6 +233,7 @@ void RGWOp_User_Modify::execute()
   RESTArgs::get_string(s, "key-type", key_type_str, &key_type_str);
 
   RESTArgs::get_bool(s, "system", false, &system);
+  RESTArgs::get_string(s, "op-mask", op_mask_str, &op_mask_str);
 
   if (!s->user->system && system) {
     ldout(s->cct, 0) << "cannot set system flag by non-system user" << dendl;
@@ -267,6 +269,16 @@ void RGWOp_User_Modify::execute()
 
   if (s->info.args.exists("system"))
     op_state.set_system(system);
+
+  if (!op_mask_str.empty()) {
+    uint32_t op_mask;
+    http_ret = rgw_parse_op_type_list(op_mask_str, &op_mask);
+    if (http_ret < 0) {
+        ldout(s->cct, 0) << "failed to parse op_mask" << dendl;
+        return;
+    }
+    op_state.set_op_mask(op_mask);
+  }
 
   http_ret = RGWUserAdminOp_User::modify(store, op_state, flusher);
 }
