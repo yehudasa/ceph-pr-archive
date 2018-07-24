@@ -18,6 +18,7 @@
 #include <map>
 #include <list>
 #include "common/dout.h"
+#include "common/Cond.h"
 #include "common/lock_cond.h"
 #include "common/lock_mutex.h"
 #include "common/lock_policy.h"
