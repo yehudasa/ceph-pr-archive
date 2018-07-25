@@ -1320,6 +1320,8 @@ TEST_P(StoreTestSpecificAUSize, BluestoreStatFSTest) {
   // just a big number to disble gc
   SetVal(g_conf(), "bluestore_gc_enable_total_threshold", "100000");
   SetVal(g_conf(), "bluestore_tiny_write_size", "0");
+  SetVal(g_conf(), "bluestore_tiny_write_size_hdd", "0");
+  SetVal(g_conf(), "bluestore_tiny_write_size_ssd", "0");
   g_conf().apply_changes(nullptr);
   int r;
 
@@ -7395,6 +7397,8 @@ TEST_P(StoreTest, BluestoreRepairTest) {
     stringify(2 * offs_base).c_str());
   SetVal(g_conf(), "bluestore_extent_map_shard_max_size", "12000");
   SetVal(g_conf(), "bluestore_tiny_write_size", "0");
+  SetVal(g_conf(), "bluestore_tiny_write_size_hdd", "0");
+  SetVal(g_conf(), "bluestore_tiny_write_size_ssd", "0");
   g_ceph_context->_conf.apply_changes(nullptr);
 
   BlueStore* bstore = dynamic_cast<BlueStore*> (store.get());
