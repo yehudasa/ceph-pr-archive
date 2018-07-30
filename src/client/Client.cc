@@ -11151,6 +11151,8 @@ int Client::_getxattr(Inode *in, const char *name, void *value, size_t size,
       r = -ENODATA;
     }
 
+    ldout(cct, 20) << "getxattr_cb, r: " << r << dendl;
+
     if (size != 0) {
       if (r > (int)size) {
 	r = -ERANGE;
@@ -11569,15 +11571,15 @@ size_t Client::_vxattrcb_quota(Inode *in, char *val, size_t size)
   return snprintf(val, size,
                   "max_bytes=%lld max_files=%lld",
                   (long long int)in->quota.max_bytes,
-                  (long long int)in->quota.max_files);
+                  (long long int)in->quota.max_files) + 1;
 }
 size_t Client::_vxattrcb_quota_max_bytes(Inode *in, char *val, size_t size)
 {
-  return snprintf(val, size, "%lld", (long long int)in->quota.max_bytes);
+  return snprintf(val, size, "%lld", (long long int)in->quota.max_bytes) + 1;
 }
 size_t Client::_vxattrcb_quota_max_files(Inode *in, char *val, size_t size)
 {
-  return snprintf(val, size, "%lld", (long long int)in->quota.max_files);
+  return snprintf(val, size, "%lld", (long long int)in->quota.max_files) + 1;
 }
 
 bool Client::_vxattrcb_layout_exists(Inode *in)
@@ -11602,19 +11604,19 @@ size_t Client::_vxattrcb_layout(Inode *in, char *val, size_t size)
   if (in->layout.pool_ns.length())
     r += snprintf(val + r, size - r, " pool_namespace=%s",
 		  in->layout.pool_ns.c_str());
-  return r;
+  return r + 1;
 }
 size_t Client::_vxattrcb_layout_stripe_unit(Inode *in, char *val, size_t size)
 {
-  return snprintf(val, size, "%llu", (unsigned long long)in->layout.stripe_unit);
+  return snprintf(val, size, "%llu", (unsigned long long)in->layout.stripe_unit) + 1;
 }
 size_t Client::_vxattrcb_layout_stripe_count(Inode *in, char *val, size_t size)
 {
-  return snprintf(val, size, "%llu", (unsigned long long)in->layout.stripe_count);
+  return snprintf(val, size, "%llu", (unsigned long long)in->layout.stripe_count) + 1;
 }
 size_t Client::_vxattrcb_layout_object_size(Inode *in, char *val, size_t size)
 {
-  return snprintf(val, size, "%llu", (unsigned long long)in->layout.object_size);
+  return snprintf(val, size, "%llu", (unsigned long long)in->layout.object_size) + 1;
 }
 size_t Client::_vxattrcb_layout_pool(Inode *in, char *val, size_t size)
 {
@@ -11626,44 +11628,44 @@ size_t Client::_vxattrcb_layout_pool(Inode *in, char *val, size_t size)
       else
 	r = snprintf(val, size, "%" PRIu64, (uint64_t)in->layout.pool_id);
     });
-  return r;
+  return r + 1;
 }
 size_t Client::_vxattrcb_layout_pool_namespace(Inode *in, char *val, size_t size)
 {
-  return snprintf(val, size, "%s", in->layout.pool_ns.c_str());
+  return snprintf(val, size, "%s", in->layout.pool_ns.c_str()) + 1;
 }
 size_t Client::_vxattrcb_dir_entries(Inode *in, char *val, size_t size)
 {
-  return snprintf(val, size, "%llu", (unsigned long long)(in->dirstat.nfiles + in->dirstat.nsubdirs));
+  return snprintf(val, size, "%llu", (unsigned long long)(in->dirstat.nfiles + in->dirstat.nsubdirs)) + 1;
 }
 size_t Client::_vxattrcb_dir_files(Inode *in, char *val, size_t size)
 {
-  return snprintf(val, size, "%llu", (unsigned long long)in->dirstat.nfiles);
+  return snprintf(val, size, "%llu", (unsigned long long)in->dirstat.nfiles) + 1;
 }
 size_t Client::_vxattrcb_dir_subdirs(Inode *in, char *val, size_t size)
 {
-  return snprintf(val, size, "%llu", (unsigned long long)in->dirstat.nsubdirs);
+  return snprintf(val, size, "%llu", (unsigned long long)in->dirstat.nsubdirs) + 1;
 }
 size_t Client::_vxattrcb_dir_rentries(Inode *in, char *val, size_t size)
 {
-  return snprintf(val, size, "%llu", (unsigned long long)(in->rstat.rfiles + in->rstat.rsubdirs));
+  return snprintf(val, size, "%llu", (unsigned long long)(in->rstat.rfiles + in->rstat.rsubdirs)) + 1;
 }
 size_t Client::_vxattrcb_dir_rfiles(Inode *in, char *val, size_t size)
 {
-  return snprintf(val, size, "%llu", (unsigned long long)in->rstat.rfiles);
+  return snprintf(val, size, "%llu", (unsigned long long)in->rstat.rfiles) + 1;
 }
 size_t Client::_vxattrcb_dir_rsubdirs(Inode *in, char *val, size_t size)
 {
-  return snprintf(val, size, "%llu", (unsigned long long)in->rstat.rsubdirs);
+  return snprintf(val, size, "%llu", (unsigned long long)in->rstat.rsubdirs) + 1;
 }
 size_t Client::_vxattrcb_dir_rbytes(Inode *in, char *val, size_t size)
 {
-  return snprintf(val, size, "%llu", (unsigned long long)in->rstat.rbytes);
+  return snprintf(val, size, "%llu", (unsigned long long)in->rstat.rbytes) + 1;
 }
 size_t Client::_vxattrcb_dir_rctime(Inode *in, char *val, size_t size)
 {
-  return snprintf(val, size, "%ld.09%ld", (long)in->rstat.rctime.sec(),
-      (long)in->rstat.rctime.nsec());
+  return snprintf(val, size, "%ld.%ld", (long)in->rstat.rctime.sec(),
+      (long)in->rstat.rctime.nsec()) + 1;
 }
 
 #define CEPH_XATTR_NAME(_type, _name) "ceph." #_type "." #_name
