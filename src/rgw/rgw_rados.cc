@@ -11980,7 +11980,7 @@ int RGWRados::raw_obj_stat(rgw_raw_obj& obj, uint64_t *psize, real_time *pmtime,
     objv_tracker->prepare_op_for_read(&op);
   }
   if (attrs) {
-    op.getxattrs(&unfiltered_attrset, NULL);
+    op.getxattrs(&unfiltered_attrset, NULL); /* XXX object attrs fetched here */
   }
   if (psize || pmtime) {
     op.stat2(&size, &mtime_ts, NULL);

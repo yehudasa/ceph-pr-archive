@@ -6828,11 +6828,43 @@ ssize_t RGWBulkUploadOp::AlignedStreamGetter::get_exactly(const size_t want,
   return len;
 }
 
+int RGWGetAttrs::verify_permission()
+{
+  obj = rgw_obj(s->bucket, s->object.name);
+  store->set_atomic(s->obj_ctx, obj);
+
+  if (!verify_object_permission(s, RGW_PERM_READ)) {
+    return -EACCES;
+  }
+
+  return 0;
+}
+
+void RGWGetAttrs::pre_exec()
+{
+  rgw_bucket_object_pre_exec(s);
+}
+
+void RGWGetAttrs::execute()
+{
+  op_ret = get_params();
+  if (op_ret < 0)
+    return;
+
+  op_ret = get_obj_attrs(store, s, obj, attrs);
+  if (op_ret < 0) {
+    return;
+  }
+
+  return;
+ }
+
 int RGWSetAttrs::verify_permission()
 {
   // This looks to be part of the RGW-NFS machinery and has no S3 or
   // Swift equivalent.
   bool perm;
+  /* XXXX why do the following 2 cases have the same action? */
   if (!s->object.empty()) {
     perm = verify_object_permission_no_policy(s, RGW_PERM_WRITE);
   } else {
@@ -6857,17 +6889,38 @@ void RGWSetAttrs::execute()
 
   rgw_obj obj(s->bucket, s->object);
 
-  if (!s->object.empty()) {
-    store->set_atomic(s->obj_ctx, obj);
-    op_ret = store->set_attrs(s->obj_ctx, s->bucket_info, obj, attrs, nullptr);
-  } else {
-    for (auto& iter : attrs) {
-      s->bucket_attrs[iter.first] = std::move(iter.second);
+  if (rmattrs) {
+    /* unset */
+    if (!s->object.empty()) {
+      map<std::string, buffer::list> noattrs;
+      store->set_atomic(s->obj_ctx, obj);
+      op_ret = store->set_attrs(s->obj_ctx, s->bucket_info, obj, noattrs,
+				&attrs);
+    } else {
+      for (auto& iter : attrs) {
+	const auto& b_iter = s->bucket_attrs.find(iter.first);
+	if (b_iter != s->bucket_attrs.end()) {
+	  s->bucket_attrs.erase(iter.first);
+	}
+      }
+      op_ret = rgw_bucket_set_attrs(store, s->bucket_info, s->bucket_attrs,
+				    &s->bucket_info.objv_tracker);
     }
-    op_ret = rgw_bucket_set_attrs(store, s->bucket_info, s->bucket_attrs,
-				  &s->bucket_info.objv_tracker);
-  }
-}
+  } else {
+    /* set */
+    if (!s->object.empty()) {
+      store->set_atomic(s->obj_ctx, obj);
+      op_ret = store->set_attrs(s->obj_ctx, s->bucket_info, obj, attrs,
+				nullptr);
+    } else {
+      for (auto& iter : attrs) {
+	s->bucket_attrs[iter.first] = std::move(iter.second);
+      }
+      op_ret = rgw_bucket_set_attrs(store, s->bucket_info, s->bucket_attrs,
+				    &s->bucket_info.objv_tracker);
+    }
+  } /* !rmattrs */
+} /* RGWSetAttrs::execute() */
 
 void RGWGetObjLayout::pre_exec()
 {

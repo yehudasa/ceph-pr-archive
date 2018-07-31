@@ -2066,12 +2066,43 @@ static inline void complete_etag(MD5& hash, string *etag)
   *etag = etag_buf_str;
 } /* complete_etag */
 
-class RGWSetAttrs : public RGWOp {
+class RGWGetAttrs : public RGWOp {
 protected:
-  map<string, buffer::list> attrs;
+  std::map<std::string, buffer::list> attrs;
+  string marker;
+  bool keys_only;
+  rgw_obj obj;
 
 public:
-  RGWSetAttrs() {}
+  RGWGetAttrs(const std::string _marker = "", const bool _keys_only = false)
+    : marker(_marker), keys_only(_keys_only)
+  {}
+
+  virtual ~RGWGetAttrs() {}
+
+  void emplace_key(std::string&& key) {
+    buffer::list nobl;
+    attrs.emplace(std::move(key), std::move(nobl));
+  }
+
+  int verify_permission();
+  void pre_exec();
+  void execute();
+
+  virtual int get_params() = 0;
+  virtual void send_response() = 0;
+  virtual const char* name() const { return "get_attrs"; }
+  virtual RGWOpType get_type() { return RGW_OP_GET_ATTRS; }
+  virtual uint32_t op_mask() { return RGW_OP_TYPE_READ; }
+}; /* RGWGetAttrs */
+
+class RGWSetAttrs : public RGWOp {
+protected:
+  map<std::string, buffer::list> attrs;
+  bool rmattrs;
+
+public:
+  RGWSetAttrs(bool _rmattrs = false) : rmattrs(_rmattrs)  {}
   ~RGWSetAttrs() override {}
 
   void emplace_attr(std::string&& key, buffer::list&& bl) {
