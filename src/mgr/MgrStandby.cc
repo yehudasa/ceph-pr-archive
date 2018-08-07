@@ -38,7 +38,8 @@
 
 MgrStandby::MgrStandby(int argc, const char **argv) :
   Dispatcher(g_ceph_context),
-  monc{g_ceph_context},
+  poolctx(cct, ceph::construct_suspended),
+  monc{g_ceph_context, poolctx},
   client_messenger(Messenger::create(
 		     g_ceph_context,
 		     cct->_conf.get_val<std::string>("ms_type"),
@@ -46,7 +47,6 @@ MgrStandby::MgrStandby(int argc, const char **argv) :
 		     "mgr",
 		     getpid(),
 		     0)),
-  poolctx(cct, ceph::construct_suspended),
   objecter{g_ceph_context, client_messenger.get(), &monc, poolctx, 0, 0},
   client{client_messenger.get(), &monc, &objecter},
   mgrc(g_ceph_context, client_messenger.get()),
@@ -114,6 +114,8 @@ int MgrStandby::init()
   client_messenger->add_dispatcher_tail(&client);
   client_messenger->start();
 
+  poolctx.start();
+
   // Initialize MonClient
   if (monc.build_initial_monmap() < 0) {
     client_messenger->shutdown();
@@ -160,7 +162,6 @@ int MgrStandby::init()
     return r;
   }
 
-  poolctx.start();
   client_t whoami = monc.get_global_id();
   client_messenger->set_myname(entity_name_t::MGR(whoami.v));
   monc.set_log_client(&log_client);

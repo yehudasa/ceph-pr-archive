@@ -20,6 +20,7 @@
 
 #include "global/global_init.h"
 #include "global/global_context.h"
+#include "common/asio_misc.h"
 #include "common/ceph_argparse.h"
 #include "common/dout.h"
 #include "common/debug.h"
@@ -51,6 +52,7 @@ class MonClientHelper : public Dispatcher
 {
 protected:
   CephContext *cct;
+  ceph::io_context_pool poolctx;
   Messenger *msg;
   MonClient monc;
 
@@ -63,8 +65,9 @@ public:
   explicit MonClientHelper(CephContext *cct_)
     : Dispatcher(cct_),
       cct(cct_),
+      poolctx(cct),
       msg(NULL),
-      monc(cct_),
+      monc(cct_, poolctx),
       lock("mon-msg-test::lock")
   { }
 
