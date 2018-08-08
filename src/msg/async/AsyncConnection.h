@@ -33,6 +33,7 @@
 
 #include "Event.h"
 #include "Stack.h"
+#include "MsgrPerfCounters.h"
 
 class AsyncMessenger;
 class Worker;
@@ -293,7 +294,7 @@ class AsyncConnection : public Connection {
 
   AsyncMessenger *async_msgr;
   uint64_t conn_id;
-  PerfCounters *logger;
+  msgr_perf_counters_t* logger{nullptr};
   int global_seq;
   __u32 connect_seq, peer_global_seq;
   std::atomic<uint64_t> out_seq{0};
@@ -403,8 +404,8 @@ class AsyncConnection : public Connection {
       delay_state = NULL;
     }
   }
-  PerfCounters *get_perf_counter() {
-    return logger;
+  msgr_perf_counters_t& get_perf_counter() {
+    return *logger;
   }
 }; /* AsyncConnection */
 

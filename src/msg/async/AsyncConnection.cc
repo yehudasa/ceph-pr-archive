@@ -123,7 +123,7 @@ AsyncConnection::AsyncConnection(
   CephContext *cct, AsyncMessenger *m, DispatchQueue *q,
   Worker *w, bool m2)
   : Connection(cct, m), delay_state(NULL), async_msgr(m), conn_id(q->get_id()),
-    logger(w->get_perf_counter()), global_seq(0), connect_seq(0), peer_global_seq(0),
+    logger(&w->get_perf_counter()), global_seq(0), connect_seq(0), peer_global_seq(0),
     state(STATE_NONE), state_after_send(STATE_NONE), port(-1),
     dispatch_queue(q), can_write(WriteStatus::NOWRITE),
     keepalive(false), recv_buf(NULL),
@@ -144,7 +144,7 @@ AsyncConnection::AsyncConnection(
   // double recv_max_prefetch see "read_until"
   recv_buf = new char[2*recv_max_prefetch];
   state_buffer = new char[4096];
-  logger->inc(l_msgr_created_connections);
+  logger->inc<l_msgr_created_connections>();
 }
 
 AsyncConnection::~AsyncConnection()
@@ -762,12 +762,12 @@ void AsyncConnection::process()
           }
           state = STATE_OPEN;
 
-          logger->inc(l_msgr_recv_messages);
-          logger->inc(l_msgr_recv_bytes, cur_msg_size + sizeof(ceph_msg_header) + sizeof(ceph_msg_footer));
+          logger->inc<l_msgr_recv_messages>();
+          logger->inc<l_msgr_recv_bytes>(cur_msg_size + sizeof(ceph_msg_header) + sizeof(ceph_msg_footer));
 
           async_msgr->ms_fast_preprocess(message);
           auto fast_dispatch_time = ceph::mono_clock::now();
-          logger->tinc(l_msgr_running_recv_time, fast_dispatch_time - recv_start_time);
+          logger->tinc<l_msgr_running_recv_time>(fast_dispatch_time - recv_start_time);
           if (delay_state) {
             double delay_period = 0;
             if (rand() % 10000 < async_msgr->cct->_conf->ms_inject_delay_probability * 10000.0) {
@@ -780,7 +780,7 @@ void AsyncConnection::process()
             lock.unlock();
             dispatch_queue->fast_dispatch(message);
             recv_start_time = ceph::mono_clock::now();
-            logger->tinc(l_msgr_running_fast_dispatch_time,
+            logger->tinc<l_msgr_running_fast_dispatch_time>(
                          recv_start_time - fast_dispatch_time);
             lock.lock();
           } else {
@@ -834,7 +834,7 @@ void AsyncConnection::process()
   if (need_dispatch_writer && is_connected())
     center->dispatch_event_external(write_handler);
 
-  logger->tinc(l_msgr_running_recv_time, ceph::mono_clock::now() - recv_start_time);
+  logger->tinc<l_msgr_running_recv_time>(ceph::mono_clock::now() - recv_start_time);
   return;
 
  fail:
@@ -1760,7 +1760,7 @@ ssize_t AsyncConnection::handle_connect_msg(ceph_msg_connect &connect, bufferlis
           existing->cs = std::move(cs);
           existing->worker->references--;
           new_worker->references++;
-          existing->logger = new_worker->get_perf_counter();
+          existing->logger = &new_worker->get_perf_counter();
           existing->worker = new_worker;
           existing->center = new_center;
           if (existing->delay_state)
@@ -1965,7 +1965,7 @@ int AsyncConnection::send_message(Message *m)
   last_active = ceph::coarse_mono_clock::now();
   // we don't want to consider local message here, it's too lightweight which
   // may disturb users
-  logger->inc(l_msgr_send_messages);
+  logger->inc<l_msgr_send_messages>();
 
   bufferlist bl;
   uint64_t f = get_features();
@@ -2294,7 +2294,7 @@ ssize_t AsyncConnection::write_message(Message *m, bufferlist& bl, bool more)
     ldout(async_msgr->cct, 1) << __func__ << " error sending " << m << ", "
                               << cpp_strerror(rc) << dendl;
   } else {
-    logger->inc(l_msgr_send_bytes, total_send_size - outcoming_bl.length());
+    logger->inc<l_msgr_send_bytes>(total_send_size - outcoming_bl.length());
     ldout(async_msgr->cct, 10) << __func__ << " sending " << m << (rc ? " continuely." :" done.") << dendl;
   }
   if (m->get_type() == CEPH_MSG_OSD_OP)
@@ -2506,7 +2506,7 @@ void AsyncConnection::handle_write()
       }
     }
 
-    logger->tinc(l_msgr_running_send_time, ceph::mono_clock::now() - start);
+    logger->tinc<l_msgr_running_send_time>(ceph::mono_clock::now() - start);
     if (r < 0) {
       ldout(async_msgr->cct, 1) << __func__ << " send msg failed" << dendl;
       goto fail;
