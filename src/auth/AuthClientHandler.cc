@@ -17,6 +17,7 @@
 
 #include "AuthClientHandler.h"
 #include "cephx/CephxClientHandler.h"
+#include "ldap_krb/KrbClientHandler.hpp"
 #include "none/AuthNoneClientHandler.h"
 
 
@@ -29,6 +30,8 @@ AuthClientHandler::create(CephContext* cct, int proto,
     return new CephxClientHandler(cct, rkeys);
   case CEPH_AUTH_NONE:
     return new AuthNoneClientHandler{cct};
+  case CEPH_AUTH_KRB5: 
+    return new KrbClientHandler<lp>(cct, rkeys);
   default:
     return NULL;
   }
