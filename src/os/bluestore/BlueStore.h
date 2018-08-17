@@ -35,12 +35,12 @@
 #include "common/bloom_filter.hpp"
 #include "common/Finisher.h"
 #include "common/Throttle.h"
-#include "common/perf_counters.h"
 #include "common/PriorityCache.h"
 #include "compressor/Compressor.h"
 #include "os/ObjectStore.h"
 
 #include "bluestore_types.h"
+#include "bluestore_counters.h"
 #include "BlockDevice.h"
 #include "common/EventTrace.h"
 
@@ -57,73 +57,6 @@ class BlueStoreRepairer;
 // constants for Buffer::optimize()
 #define MAX_BUFFER_SLOP_RATIO_DEN  8  // so actually 1/N
 
-
-enum {
-  l_bluestore_first = 732430,
-  l_bluestore_kv_flush_lat,
-  l_bluestore_kv_commit_lat,
-  l_bluestore_kv_sync_lat,
-  l_bluestore_kv_final_lat,
-  l_bluestore_state_prepare_lat,
-  l_bluestore_state_aio_wait_lat,
-  l_bluestore_state_io_done_lat,
-  l_bluestore_state_kv_queued_lat,
-  l_bluestore_state_kv_committing_lat,
-  l_bluestore_state_kv_done_lat,
-  l_bluestore_state_deferred_queued_lat,
-  l_bluestore_state_deferred_aio_wait_lat,
-  l_bluestore_state_deferred_cleanup_lat,
-  l_bluestore_state_finishing_lat,
-  l_bluestore_state_done_lat,
-  l_bluestore_throttle_lat,
-  l_bluestore_submit_lat,
-  l_bluestore_commit_lat,
-  l_bluestore_read_lat,
-  l_bluestore_read_onode_meta_lat,
-  l_bluestore_read_wait_aio_lat,
-  l_bluestore_compress_lat,
-  l_bluestore_decompress_lat,
-  l_bluestore_csum_lat,
-  l_bluestore_compress_success_count,
-  l_bluestore_compress_rejected_count,
-  l_bluestore_write_pad_bytes,
-  l_bluestore_deferred_write_ops,
-  l_bluestore_deferred_write_bytes,
-  l_bluestore_write_penalty_read_ops,
-  l_bluestore_allocated,
-  l_bluestore_stored,
-  l_bluestore_compressed,
-  l_bluestore_compressed_allocated,
-  l_bluestore_compressed_original,
-  l_bluestore_onodes,
-  l_bluestore_onode_hits,
-  l_bluestore_onode_misses,
-  l_bluestore_onode_shard_hits,
-  l_bluestore_onode_shard_misses,
-  l_bluestore_extents,
-  l_bluestore_blobs,
-  l_bluestore_buffers,
-  l_bluestore_buffer_bytes,
-  l_bluestore_buffer_hit_bytes,
-  l_bluestore_buffer_miss_bytes,
-  l_bluestore_write_big,
-  l_bluestore_write_big_bytes,
-  l_bluestore_write_big_blobs,
-  l_bluestore_write_small,
-  l_bluestore_write_small_bytes,
-  l_bluestore_write_small_unused,
-  l_bluestore_write_small_deferred,
-  l_bluestore_write_small_pre_read,
-  l_bluestore_write_small_new,
-  l_bluestore_txc,
-  l_bluestore_onode_reshard,
-  l_bluestore_blob_split,
-  l_bluestore_extent_compress,
-  l_bluestore_gc_merged,
-  l_bluestore_read_eio,
-  l_bluestore_fragmentation,
-  l_bluestore_last
-};
 
 class BlueStore : public ObjectStore,
 		  public md_config_obs_t {
@@ -1061,13 +994,15 @@ public:
   /// a cache (shard) of onodes and buffers
   struct Cache {
     CephContext* cct;
-    PerfCounters *logger;
+    bluestore_perf_counters_t* logger;
     std::recursive_mutex lock;          ///< protect lru and other structures
 
     std::atomic<uint64_t> num_extents = {0};
     std::atomic<uint64_t> num_blobs = {0};
 
-    static Cache *create(CephContext* cct, string type, PerfCounters *logger);
+    static Cache *create(CephContext* cct,
+			 std::string type,
+			 bluestore_perf_counters_t* logger);
 
     Cache(CephContext* cct) : cct(cct), logger(nullptr) {}
     virtual ~Cache() {}
@@ -1547,15 +1482,18 @@ public:
     }
 #endif
 
-    void log_state_latency(PerfCounters *logger, int state) {
+    template<const perf_counter_meta_t& pcid>
+    void log_state_latency(bluestore_perf_counters_t& logger) {
       utime_t lat, now = ceph_clock_now();
       lat = now - last_stamp;
-      logger->tinc(state, lat);
+      logger.tinc<pcid>(lat);
+#if 0
 #if defined(WITH_LTTNG) && defined(WITH_EVENTTRACE)
       if (state >= l_bluestore_state_prepare_lat && state <= l_bluestore_state_done_lat) {
         double usecs = (now.to_nsec()-last_stamp.to_nsec())/1000;
         OID_ELAPSED("", usecs, get_state_latency_name(state));
       }
+#endif
 #endif
       last_stamp = now;
     }
@@ -1902,8 +1840,6 @@ private:
   deque<TransContext*> kv_committing_to_finalize;   ///< pending finalization
   deque<DeferredBatch*> deferred_stable_to_finalize; ///< pending finalization
 
-  PerfCounters *logger = nullptr;
-
   list<CollectionRef> removed_collections;
 
   RWLock debug_read_error_lock = {"BlueStore::debug_read_error_lock"};
@@ -2096,11 +2032,12 @@ private:
                             PriorityCache::Priority pri);
   } mempool_thread;
 
+  // large thing, it's better to keep it at the end
+  mutable bluestore_perf_counters_t logger;
+
   // --------------------------------------------------------
   // private methods
 
-  void _init_logger();
-  void _shutdown_logger();
   int _reload_logger();
 
   int _open_path();
@@ -2348,7 +2285,7 @@ public:
   void flush_cache() override;
   void dump_perf_counters(Formatter *f) override {
     f->open_object_section("perf_counters");
-    logger->dump_formatted(f, false);
+    logger.dump_formatted(f, false);
     f->close_section();
   }
 
@@ -2477,15 +2414,16 @@ public:
       return ret;
     }
 
-    void update_from_perfcounters(PerfCounters &logger);
+    void update_from_perfcounters(const bluestore_perf_counters_t& logger);
   } perf_tracker;
 
   objectstore_perf_stat_t get_cur_stats() override {
-    perf_tracker.update_from_perfcounters(*logger);
+    perf_tracker.update_from_perfcounters(logger);
     return perf_tracker.get_cur_stats();
   }
   const PerfCounters* get_perf_counters() const override {
-    return logger;
+    // FIXME
+    return nullptr;
   }
 
   int queue_transactions(
