@@ -150,6 +150,9 @@ public:
   using VersionSig = void(boost::system::error_code, version_t, version_t);
   using VersionCompletion = ceph::async::Completion<VersionSig>;
 
+  using CommandSig = void(boost::system::error_code, std::string, ceph::bufferlist);
+  using CommandCompletion = ceph::async::Completion<CommandSig>;
+
   MonMap monmap;
   map<string,string> config_mgr;
 private:
@@ -208,7 +211,7 @@ private:
   std::unique_ptr<Context> session_established_context;
   bool had_a_connection;
   double reopen_interval_multiplier;
-  
+
   bool _opened() const;
   bool _hunting() const;
   void _start_hunting();
@@ -381,42 +384,131 @@ private:
 
   struct MonCommand {
     string target_name;
-    int target_rank;
+    int target_rank = -1;
     uint64_t tid;
     vector<string> cmd;
     bufferlist inbl;
-    bufferlist *poutbl;
-    string *prs;
-    int *prval;
-    Context *onfinish, *ontimeout;
+    std::unique_ptr<CommandCompletion> onfinish;
+    std::optional<boost::asio::steady_timer> cancel_timer;
 
-    explicit MonCommand(uint64_t t)
-      : target_rank(-1),
-	tid(t),
-	poutbl(NULL), prs(NULL), prval(NULL), onfinish(NULL), ontimeout(NULL)
-    {}
+    MonCommand(MonClient& monc, uint64_t t,
+	       std::unique_ptr<CommandCompletion> onfinish)
+      : tid(t), onfinish(std::move(onfinish)) {
+      auto timeout = ceph::maybe_timespan(monc.cct->_conf->rados_mon_op_timeout);
+      if (timeout) {
+	cancel_timer.emplace(monc.service, *timeout);
+	cancel_timer->async_wait(
+          [this, &monc](boost::system::error_code ec) {
+	    if (ec)
+	      return;
+	    Mutex::Locker l(monc.monc_lock);
+	    monc._cancel_mon_command(tid);
+	  });
+      }
+    }
   };
+  friend MonCommand;
   map<uint64_t,MonCommand*> mon_commands;
 
   void _send_command(MonCommand *r);
   void _resend_mon_commands();
   int _cancel_mon_command(uint64_t tid);
-  void _finish_command(MonCommand *r, int ret, string rs);
+  void _finish_command(MonCommand *r, boost::system::error_code ret, string&& rs, bufferlist&& bl);
   void _finish_auth();
   void handle_mon_command_ack(MMonCommandAck *ack);
 
 public:
+  template<typename CompletionToken>
+  auto start_mon_command(const vector<string>& cmd, const bufferlist& inbl,
+			 CompletionToken&& token) {
+    auto l = std::scoped_lock(monc_lock);
+    boost::asio::async_completion<CompletionToken, CommandSig> init(token);
+    auto r = new MonCommand(*this, ++last_mon_command_tid,
+			    CommandCompletion::create(service.get_executor(),
+						      std::move(init.completion_handler)));
+    r->cmd = cmd;
+    r->inbl = inbl;
+    mon_commands.emplace(r->tid, r);
+    _send_command(r);
+    return init.result.get();
+  }
+
+  template<typename CompletionToken>
+  auto start_mon_command(int mon_rank, const vector<string>& cmd,
+			 const bufferlist& inbl, CompletionToken&& token) {
+    auto l = std::scoped_lock(monc_lock);
+    boost::asio::async_completion<CompletionToken, CommandSig> init(token);
+    auto r = new MonCommand(*this, ++last_mon_command_tid,
+			    CommandCompletion::create(service.get_executor(),
+						      std::move(init.completion_handler)));
+    r->target_rank = mon_rank;
+    r->cmd = cmd;
+    r->inbl = inbl;
+    mon_commands.emplace(r->tid, r);
+    _send_command(r);
+    return init.result.get();
+  }
+
+  template<typename CompletionToken>
+  auto start_mon_command(const string &mon_name, const vector<string>& cmd,
+			 const bufferlist& inbl, CompletionToken&& token) {
+    auto l = std::scoped_lock(monc_lock);
+    boost::asio::async_completion<CompletionToken, CommandSig> init(token);
+    auto r = new MonCommand(*this, ++last_mon_command_tid,
+			    CommandCompletion::create(service.get_executor(),
+						      std::move(init.completion_handler)));
+    r->target_name = mon_name;
+    r->cmd = cmd;
+    r->inbl = inbl;
+    mon_commands.emplace(r->tid, r);
+    _send_command(r);
+    return init.result.get();
+  }
+
+  class ContextVerter {
+    std::string* outs;
+    ceph::bufferlist* outbl;
+    Context* onfinish;
+
+  public:
+    ContextVerter(std::string* outs, ceph::bufferlist* outbl, Context* onfinish)
+      : outs(outs), outbl(outbl), onfinish(onfinish) {}
+    ~ContextVerter() = default;
+    ContextVerter(const ContextVerter&) = default;
+    ContextVerter& operator =(const ContextVerter&) = default;
+    ContextVerter(ContextVerter&&) = default;
+    ContextVerter& operator =(ContextVerter&&) = default;
+
+    void operator()(boost::system::error_code e,
+		    std::string&& s,
+		    ceph::bufferlist&& bl) {
+      if (outs)
+	*outs = std::move(s);
+      if (outbl)
+	*outbl = std::move(bl);
+      if (onfinish)
+	onfinish->complete(ceph::from_error_code(e));
+    }
+  };
+
   void start_mon_command(const vector<string>& cmd, const bufferlist& inbl,
-			bufferlist *outbl, string *outs,
-			Context *onfinish);
+			 bufferlist *outbl, string *outs,
+			 Context *onfinish) {
+    start_mon_command(cmd, inbl, ContextVerter(outs, outbl, onfinish));
+  }
   void start_mon_command(int mon_rank,
-			const vector<string>& cmd, const bufferlist& inbl,
-			bufferlist *outbl, string *outs,
-			Context *onfinish);
+			 const vector<string>& cmd, const bufferlist& inbl,
+			 bufferlist *outbl, string *outs,
+			 Context *onfinish) {
+    start_mon_command(mon_rank, cmd, inbl, ContextVerter(outs, outbl, onfinish));
+  }
   void start_mon_command(const string &mon_name,  ///< mon name, with mon. prefix
-			const vector<string>& cmd, const bufferlist& inbl,
-			bufferlist *outbl, string *outs,
-			Context *onfinish);
+			 const vector<string>& cmd, const bufferlist& inbl,
+			 bufferlist *outbl, string *outs,
+			 Context *onfinish) {
+    start_mon_command(mon_name, cmd, inbl, ContextVerter(outs, outbl, onfinish));
+  }
+
 
   // version requests
 public:
@@ -470,7 +562,10 @@ const boost::system::error_category& monc_category() noexcept;
 namespace monc_errc {
 enum monc_errc_t {
   shutting_down = 1, // Command failed due to MonClient shutting down
-  session_reset // Monitor session was reset
+  session_reset, // Monitor session was reset
+  rank_dne, // Requested monitor rank does not exist
+  mon_dne, // Requested monitor does not exist
+  timed_out // Monitor operation timed out
 };
 }
 

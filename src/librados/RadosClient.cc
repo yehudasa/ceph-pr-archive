@@ -847,7 +847,18 @@ void librados::RadosClient::mon_command_async(const vector<string>& cmd,
                                               Context *on_finish)
 {
   lock.Lock();
-  monclient.start_mon_command(cmd, inbl, outbl, outs, on_finish);
+  monclient.start_mon_command(cmd, inbl,
+			      [outs, outbl, on_finish]
+			      (boost::system::error_code e,
+			       std::string&& s,
+			       ceph::bufferlist&& b) {
+				if (outs)
+				  *outs = std::move(s);
+				if (outbl)
+				  *outbl = std::move(b);
+				if (on_finish)
+				  (*on_finish)(e);
+			      });
   lock.Unlock();
 }
 
@@ -878,38 +889,32 @@ int librados::RadosClient::mon_command(int rank, const vector<string>& cmd,
 				       const bufferlist &inbl,
 				       bufferlist *outbl, string *outs)
 {
-  Mutex mylock("RadosClient::mon_command::mylock");
-  Cond cond;
-  bool done;
-  int rval;
   lock.Lock();
-  monclient.start_mon_command(rank, cmd, inbl, outbl, outs,
-			       new C_SafeCond(&mylock, &cond, &done, &rval));
+  auto f = monclient.start_mon_command(rank, cmd, inbl, boost::asio::use_future);
   lock.Unlock();
-  mylock.Lock();
-  while (!done)
-    cond.Wait(mylock);
-  mylock.Unlock();
-  return rval;
+  f.wait();
+  try {
+    std::tie(*outs, *outbl) = std::move(f).get();
+  } catch (const boost::system::system_error& e) {
+    return ceph::from_error_code(e.code());
+  }
+  return 0;
 }
 
 int librados::RadosClient::mon_command(string name, const vector<string>& cmd,
 				       const bufferlist &inbl,
 				       bufferlist *outbl, string *outs)
 {
-  Mutex mylock("RadosClient::mon_command::mylock");
-  Cond cond;
-  bool done;
-  int rval;
   lock.Lock();
-  monclient.start_mon_command(name, cmd, inbl, outbl, outs,
-			       new C_SafeCond(&mylock, &cond, &done, &rval));
+  auto f = monclient.start_mon_command(name, cmd, inbl, boost::asio::use_future);
   lock.Unlock();
-  mylock.Lock();
-  while (!done)
-    cond.Wait(mylock);
-  mylock.Unlock();
-  return rval;
+  f.wait();
+  try {
+    std::tie(*outs, *outbl) = std::move(f).get();
+  } catch (const boost::system::system_error& e) {
+    return ceph::from_error_code(e.code());
+  }
+  return 0;
 }
 
 int librados::RadosClient::osd_command(int osd, vector<string>& cmd,
