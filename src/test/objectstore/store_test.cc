@@ -5956,7 +5956,7 @@ TEST_P(StoreTestSpecificAUSize, BlobReuseOnOverwrite) {
   coll_t cid;
   ghobject_t hoid(hobject_t("test_hint", "", CEPH_NOSNAP, 0, -1, ""));
 
-  const PerfCounters* logger = store->get_perf_counters();
+  const auto logger = store->get_perf_counters();
 
   auto ch = store->create_new_collection(cid);
   {
@@ -6014,8 +6014,8 @@ TEST_P(StoreTestSpecificAUSize, BlobReuseOnOverwrite) {
     ASSERT_EQ(r, (int)block_size);
     expected.append(string(block_size, 'b'));
     ASSERT_TRUE(bl_eq(expected, bl));
-    ASSERT_EQ(logger->get(l_bluestore_blobs), 1u);
-    ASSERT_EQ(logger->get(l_bluestore_extents), 2u);
+    ASSERT_EQ(logger->get_u64(l_bluestore_blobs), 1u);
+    ASSERT_EQ(logger->get_u64(l_bluestore_extents), 2u);
   }
   {
     // overwrite at end
@@ -6039,8 +6039,8 @@ TEST_P(StoreTestSpecificAUSize, BlobReuseOnOverwrite) {
     ASSERT_EQ(r, (int)block_size);
     expected.append(string(block_size, 'b'));
     ASSERT_TRUE(bl_eq(expected, bl));
-    ASSERT_EQ(logger->get(l_bluestore_blobs), 1u);
-    ASSERT_EQ(logger->get(l_bluestore_extents), 2u);
+    ASSERT_EQ(logger->get_u64(l_bluestore_blobs), 1u);
+    ASSERT_EQ(logger->get_u64(l_bluestore_extents), 2u);
   }
   {
     // fill the gap
@@ -6101,8 +6101,8 @@ TEST_P(StoreTestSpecificAUSize, BlobReuseOnOverwrite) {
     expected.append(string(block_size * 2, 'e'));
     ASSERT_TRUE(bl_eq(expected, bl));
   }
-  ASSERT_EQ(logger->get(l_bluestore_blobs), 1u);
-  ASSERT_EQ(logger->get(l_bluestore_extents), 1u);
+  ASSERT_EQ(logger->get_u64(l_bluestore_blobs), 1u);
+  ASSERT_EQ(logger->get_u64(l_bluestore_extents), 1u);
 
 
   {
@@ -6131,7 +6131,7 @@ TEST_P(StoreTestSpecificAUSize, BlobReuseOnOverwriteReverse) {
 
   auto ch = store->create_new_collection(cid);
 
-  const PerfCounters* logger = store->get_perf_counters();
+  const auto logger = store->get_perf_counters();
   {
     ObjectStore::Transaction t;
     t.create_collection(cid, 0);
@@ -6170,8 +6170,8 @@ TEST_P(StoreTestSpecificAUSize, BlobReuseOnOverwriteReverse) {
     expected.append(string(block_size, 'b'));
     expected.append(string(block_size, 'a'));
     ASSERT_TRUE(bl_eq(expected, bl));
-    ASSERT_EQ(logger->get(l_bluestore_blobs), 1u);
-    ASSERT_EQ(logger->get(l_bluestore_extents), 1u);
+    ASSERT_EQ(logger->get_u64(l_bluestore_blobs), 1u);
+    ASSERT_EQ(logger->get_u64(l_bluestore_extents), 1u);
   }
 
 
@@ -6198,8 +6198,8 @@ TEST_P(StoreTestSpecificAUSize, BlobReuseOnOverwriteReverse) {
     expected.append(string(block_size, 0));
     expected.append(string(block_size, 'b'));
     ASSERT_TRUE(bl_eq(expected, bl));
-    ASSERT_EQ(logger->get(l_bluestore_blobs), 1u);
-    ASSERT_EQ(logger->get(l_bluestore_extents), 2u);
+    ASSERT_EQ(logger->get_u64(l_bluestore_blobs), 1u);
+    ASSERT_EQ(logger->get_u64(l_bluestore_extents), 2u);
   }
 
   {
@@ -6225,8 +6225,8 @@ TEST_P(StoreTestSpecificAUSize, BlobReuseOnOverwriteReverse) {
     expected.append(string(block_size, 0));
     expected.append(string(block_size, 'd'));
     ASSERT_TRUE(bl_eq(expected, bl));
-    ASSERT_EQ(logger->get(l_bluestore_blobs), 1u);
-    ASSERT_EQ(logger->get(l_bluestore_extents), 3u);
+    ASSERT_EQ(logger->get_u64(l_bluestore_blobs), 1u);
+    ASSERT_EQ(logger->get_u64(l_bluestore_extents), 3u);
   }
 
   {
@@ -6254,8 +6254,8 @@ TEST_P(StoreTestSpecificAUSize, BlobReuseOnOverwriteReverse) {
     expected.append(string(block_size, 0));
     expected.append(string(block_size, 'e'));
     ASSERT_TRUE(bl_eq(expected, bl));
-    ASSERT_EQ(logger->get(l_bluestore_blobs), 2u);
-    ASSERT_EQ(logger->get(l_bluestore_extents), 5u);
+    ASSERT_EQ(logger->get_u64(l_bluestore_blobs), 2u);
+    ASSERT_EQ(logger->get_u64(l_bluestore_extents), 5u);
   }
   {
     // fill gaps at the second slot
@@ -6283,8 +6283,8 @@ TEST_P(StoreTestSpecificAUSize, BlobReuseOnOverwriteReverse) {
     expected.append(string(block_size, 'f'));
     expected.append(string(block_size, 'e'));
     ASSERT_TRUE(bl_eq(expected, bl));
-    ASSERT_EQ(logger->get(l_bluestore_blobs), 2u);
-    ASSERT_EQ(logger->get(l_bluestore_extents), 4u);
+    ASSERT_EQ(logger->get_u64(l_bluestore_blobs), 2u);
+    ASSERT_EQ(logger->get_u64(l_bluestore_extents), 4u);
   }
   {
     ObjectStore::Transaction t;
@@ -6310,7 +6310,7 @@ TEST_P(StoreTestSpecificAUSize, BlobReuseOnSmallOverwrite) {
   coll_t cid;
   ghobject_t hoid(hobject_t("test_hint", "", CEPH_NOSNAP, 0, -1, ""));
 
-  const PerfCounters* logger = store->get_perf_counters();
+  const auto logger = store->get_perf_counters();
   auto ch = store->create_new_collection(cid);
 
   {
@@ -6356,8 +6356,8 @@ TEST_P(StoreTestSpecificAUSize, BlobReuseOnSmallOverwrite) {
     expected.append(string(block_size, 'a'));
     ASSERT_TRUE(bl_eq(expected, bl));
 
-    ASSERT_EQ(logger->get(l_bluestore_blobs), 1u);
-    ASSERT_EQ(logger->get(l_bluestore_extents), 3u);
+    ASSERT_EQ(logger->get_u64(l_bluestore_blobs), 1u);
+    ASSERT_EQ(logger->get_u64(l_bluestore_extents), 3u);
   }
   {
     ObjectStore::Transaction t;
@@ -6724,8 +6724,8 @@ TEST_P(StoreTestSpecificAUSize, garbageCollection) {
       int r = store->statfs(&statfs);
       ASSERT_EQ(r, 0);
       ASSERT_EQ(statfs.data_compressed_allocated, 0x20000);
-      const PerfCounters* counters = store->get_perf_counters();
-      ASSERT_EQ(counters->get(l_bluestore_gc_merged), 0u);
+      const auto counters = store->get_perf_counters();
+      ASSERT_EQ(counters->get_u64(l_bluestore_gc_merged), 0u);
     }
 
     {
@@ -6734,8 +6734,8 @@ TEST_P(StoreTestSpecificAUSize, garbageCollection) {
       int r = store->statfs(&statfs);
       ASSERT_EQ(r, 0);
       ASSERT_EQ(statfs.data_compressed_allocated, 0x20000);
-      const PerfCounters* counters = store->get_perf_counters();
-      ASSERT_EQ(counters->get(l_bluestore_gc_merged), 0x10000u);
+      const auto counters = store->get_perf_counters();
+      ASSERT_EQ(counters->get_u64(l_bluestore_gc_merged), 0x10000u);
     }
     {
       struct store_statfs_t statfs;
@@ -6743,8 +6743,8 @@ TEST_P(StoreTestSpecificAUSize, garbageCollection) {
       int r = store->statfs(&statfs);
       ASSERT_EQ(r, 0);
       ASSERT_EQ(statfs.data_compressed_allocated, 0x20000);
-      const PerfCounters* counters = store->get_perf_counters();
-      ASSERT_EQ(counters->get(l_bluestore_gc_merged), 0x20000u);
+      const auto counters = store->get_perf_counters();
+      ASSERT_EQ(counters->get_u64(l_bluestore_gc_merged), 0x20000u);
     }
     {
       struct store_statfs_t statfs;
@@ -6752,8 +6752,8 @@ TEST_P(StoreTestSpecificAUSize, garbageCollection) {
       int r = store->statfs(&statfs);
       ASSERT_EQ(r, 0);
       ASSERT_EQ(statfs.data_compressed_allocated, 0x20000);
-      const PerfCounters* counters = store->get_perf_counters();
-      ASSERT_EQ(counters->get(l_bluestore_gc_merged), 0x20000u);
+      const auto counters = store->get_perf_counters();
+      ASSERT_EQ(counters->get_u64(l_bluestore_gc_merged), 0x20000u);
     }
     {
       struct store_statfs_t statfs;
@@ -6761,8 +6761,8 @@ TEST_P(StoreTestSpecificAUSize, garbageCollection) {
       int r = store->statfs(&statfs);
       ASSERT_EQ(r, 0);
       ASSERT_EQ(statfs.data_compressed_allocated, 0x10000);
-      const PerfCounters* counters = store->get_perf_counters();
-      ASSERT_EQ(counters->get(l_bluestore_gc_merged), 0x3ffffu);
+      const auto counters = store->get_perf_counters();
+      ASSERT_EQ(counters->get_u64(l_bluestore_gc_merged), 0x3ffffu);
     }
     {
       struct store_statfs_t statfs;
@@ -6770,8 +6770,8 @@ TEST_P(StoreTestSpecificAUSize, garbageCollection) {
       int r = store->statfs(&statfs);
       ASSERT_EQ(r, 0);
       ASSERT_EQ(statfs.data_compressed_allocated, 0x10000);
-      const PerfCounters* counters = store->get_perf_counters();
-      ASSERT_EQ(counters->get(l_bluestore_gc_merged), 0x40001u);
+      const auto counters = store->get_perf_counters();
+      ASSERT_EQ(counters->get_u64(l_bluestore_gc_merged), 0x40001u);
     }
     SetVal(g_conf(), "bluestore_gc_enable_total_threshold", "1"); //forbid GC when saving = 0
     {
@@ -6781,8 +6781,8 @@ TEST_P(StoreTestSpecificAUSize, garbageCollection) {
       int r = store->statfs(&statfs);
       ASSERT_EQ(r, 0);
       ASSERT_EQ(statfs.data_compressed_allocated, 0x10000);
-      const PerfCounters* counters = store->get_perf_counters();
-      ASSERT_EQ(counters->get(l_bluestore_gc_merged), 0x40001u);
+      const auto counters = store->get_perf_counters();
+      ASSERT_EQ(counters->get_u64(l_bluestore_gc_merged), 0x40001u);
     }
     {
       struct store_statfs_t statfs;
@@ -6790,8 +6790,8 @@ TEST_P(StoreTestSpecificAUSize, garbageCollection) {
       int r = store->statfs(&statfs);
       ASSERT_EQ(r, 0);
       ASSERT_EQ(statfs.data_compressed_allocated, 0x0);
-      const PerfCounters* counters = store->get_perf_counters();
-      ASSERT_EQ(counters->get(l_bluestore_gc_merged), 0x40007u);
+      const auto counters = store->get_perf_counters();
+      ASSERT_EQ(counters->get_u64(l_bluestore_gc_merged), 0x40007u);
     }
     {
       ObjectStore::Transaction t;
