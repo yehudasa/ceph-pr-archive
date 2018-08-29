@@ -242,42 +242,4 @@
       </cd-info-card>
     </div>
   </cd-info-group>
-
-  <cd-info-group groupTitle="Logs"
-                 i18n-groupTitle
-                 class="row info-group"
-                 id="logs"
-                 *ngIf="contentData.clog || contentData.audit_log">
-
-    <cd-info-card cardTitle="Cluster"
-                  i18n-cardTitle
-                  class="col-md-12 col-lg-6"
-                  cardClass="card-medium"
-                  contentClass="no-center scroll text-monospace"
-                  *ngIf="contentData.clog">
-      <p *ngFor="let line of contentData.clog">
-        {{ line.stamp }}&nbsp;{{ line.priority }}&nbsp;
-        <span [ngStyle]="line | logColor">
-          {{ line.message }}
-          <br>
-        </span>
-      </p>
-    </cd-info-card>
-    <cd-info-card cardTitle="Audit"
-                  i18n-cardTitle
-                  class="col-md-12 col-lg-6"
-                  cardClass="card-medium"
-                  contentClass="no-center scroll text-monospace"
-                  *ngIf="contentData.audit_log">
-      <p *ngFor="let line of contentData.audit_log">
-        {{ line.stamp }}&nbsp;{{ line.priority }}&nbsp;
-        <span [ngStyle]="line | logColor">
-          <span style="font-weight: bold;">
-            {{ line.message }}
-          </span>
-          <br>
-        </span>
-      </p>
-    </cd-info-card>
-  </cd-info-group>
 </div>

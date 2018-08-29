@@ -85,9 +85,9 @@ describe('HealthComponent', () => {
     fixture.detectChanges();
 
     const infoGroups = fixture.debugElement.nativeElement.querySelectorAll('cd-info-group');
-    expect(infoGroups.length).toBe(4);
+    expect(infoGroups.length).toBe(3);
 
     const infoCards = fixture.debugElement.nativeElement.querySelectorAll('cd-info-card');
-    expect(infoCards.length).toBe(20);
+    expect(infoCards.length).toBe(18);
   });
 });
