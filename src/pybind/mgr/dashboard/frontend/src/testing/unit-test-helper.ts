@@ -4,6 +4,7 @@ import * as _ from 'lodash';
 
 import { TableActionsComponent } from '../app/shared/datatable/table-actions/table-actions.component';
 import { Permission } from '../app/shared/models/permissions';
+import { SharedModule } from '../app/shared/shared.module';
 import { _DEV_ } from '../unit-test-configuration';
 
 export function configureTestBed(configuration, useOldMethod?) {

@@ -1,0 +1,23 @@
+<div *ngIf="contentData"
+     class="container-fluid">
+  <cd-info-panel i18n *ngIf="contentData.clog">
+    <p *ngFor="let line of contentData.clog">
+      {{ line.stamp }}&nbsp;{{ line.priority }}&nbsp;
+      <span [ngStyle]="line">
+	{{ line.message }}
+      <br>
+      </span>
+    </p>
+  </cd-info-panel>
+  <cd-info-panel i18n *ngIf="contentData.audit_log">
+    <p *ngFor="let line of contentData.audit_log">
+      {{ line.stamp }}&nbsp;{{ line.priority }}&nbsp;
+      <span [ngStyle]="line">
+      <span style="font-weight: bold;">
+	{{ line.message }}
+      </span>
+      <br>
+      </span>
+    </p>
+  </cd-info-panel>
+</div>

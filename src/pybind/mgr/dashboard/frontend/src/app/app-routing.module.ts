@@ -9,6 +9,7 @@ import { CephfsListComponent } from './ceph/cephfs/cephfs-list/cephfs-list.compo
 import { ConfigurationFormComponent } from './ceph/cluster/configuration/configuration-form/configuration-form.component';
 import { ConfigurationComponent } from './ceph/cluster/configuration/configuration.component';
 import { HostsComponent } from './ceph/cluster/hosts/hosts.component';
+import { LogsComponent } from './ceph/cluster/logs/logs.component';
 import { MonitorComponent } from './ceph/cluster/monitor/monitor.component';
 import { OsdListComponent } from './ceph/cluster/osd/osd-list/osd-list.component';
 import { DashboardComponent } from './ceph/dashboard/dashboard/dashboard.component';
@@ -88,6 +89,12 @@ const routes: Routes = [
         data: { breadcrumbs: 'Edit' }
       }
     ]
+  },
+  {
+    path: 'logs',
+    component: LogsComponent,
+    canActivate: [AuthGuardService],
+    data: { breadcrumbs: 'Cluster/Logs' }
   },
   {
     path: 'perf_counters/:type/:id',
