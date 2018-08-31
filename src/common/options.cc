@@ -6356,6 +6356,10 @@ std::vector<Option> get_rgw_options() {
     .add_tag("performance")
     .add_see_also("rgw_frontends"),
 
+    Option("rgw_enable_dmclock", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(true)
+    .set_description("Enable dmclock scheduler for rgw requests"),
+
     Option("rgw_dmclock_admin_res", Option::TYPE_FLOAT, Option::LEVEL_ADVANCED)
     .set_default(100.0)
     .set_description("mclock reservation for admin requests")
