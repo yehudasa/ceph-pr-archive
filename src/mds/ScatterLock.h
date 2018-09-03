@@ -20,6 +20,8 @@
 
 #include "MDSContext.h"
 
+typedef pair<utime_t, CInode*> PropagationId;
+
 class ScatterLock : public SimpleLock {
 
   struct more_bits_t {
@@ -48,7 +50,7 @@ class ScatterLock : public SimpleLock {
     QUICKFLUSH	     = 1 << 13,
   };
 
-  set<utime_t> propagate_times;
+  set<PropagationId> propagate_ids;
 
 public:
   ScatterLock(MDSCacheObject *o, LockType *lt) :
@@ -98,17 +100,17 @@ public:
 
   void set_update_stamp(utime_t t) { more()->update_stamp = t; }
 
-  set<utime_t>& get_propagate_times() {
-    return propagate_times;
+  set<PropagationId>& get_propagate_ids() {
+    return propagate_ids;
   }
 
-  void add_propagate_time(utime_t t) { propagate_times.insert(t); }
+  void add_propagate_id(PropagationId pi) { propagate_ids.insert(pi); }
   
-  void add_propagate_times(set<utime_t> ts) { propagate_times.insert(ts.begin(), ts.end()); }
+  void add_propagate_ids(set<PropagationId> pis) { propagate_ids.insert(pis.begin(), pis.end()); }
   
-  void clear_propagate_time(utime_t t) { propagate_times.erase(t); }
+  void clear_propagate_id(PropagationId pi) { propagate_ids.erase(pi); }
 
-  void clear_propagate_times() { propagate_times.clear(); }
+  void clear_propagate_ids() { propagate_ids.clear(); }
 
   void set_scatter_wanted() {
     state_flags |= SCATTER_WANTED;

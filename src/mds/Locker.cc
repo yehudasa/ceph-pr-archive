@@ -4714,7 +4714,7 @@ void Locker::scatter_tick()
 	       << *lock << " " << *lock->get_parent() << dendl;
       continue;
     }
-    if (lock->get_type() == CEPH_LOCK_INEST && lock->get_propagate_times().size())
+    if (lock->get_type() == CEPH_LOCK_INEST && lock->is_quickflush())
       //this lock is being quickflushed by some rstat propagate command,
       //skip it for now.
       continue;
@@ -4722,7 +4722,7 @@ void Locker::scatter_tick()
       break;
     updated_scatterlocks.pop_front();
     if (lock->get_type() == CEPH_LOCK_INEST) {
-      mark_nudging_nestlock(utime_t(), lock, true);
+      mark_nudging_nestlock(make_pair(utime_t(), (CInode*)NULL), lock, true);
       C_MDS_NestlockNudged* fin = new C_MDS_NestlockNudged(mds, lock);
       if (!scatter_nudge(lock, fin)) {
 	if (lock->is_dirty()) {
@@ -5428,7 +5428,7 @@ void Locker::handle_file_lock(ScatterLock *lock, const MLock::const_ref &m)
       dout(7) << "handle_file_lock trying nudge on " << *lock
 	      << " on " << *lock->get_parent() << dendl;
       if (lock->get_type() == CEPH_LOCK_INEST) {
-  	mark_nudging_nestlock(utime_t(), lock, true);
+  	mark_nudging_nestlock(make_pair(utime_t(),(CInode*)NULL), lock, true);
   	C_MDS_NestlockNudged* fin = new C_MDS_NestlockNudged(mds, lock);
 	if (!scatter_nudge(lock, fin, true)) {
   	  if (lock->is_dirty()) {
@@ -5477,7 +5477,8 @@ void Locker::propagate_rstats_internal(MDRequestRef& mdr)
       ScatterLock* lock = *it;
       if (n-- == 0)
   	break;
-      if (lock->get_type() == CEPH_LOCK_INEST) {
+      if (lock->get_type() == CEPH_LOCK_INEST 
+	  && to->is_projected_ancestor_of(static_cast<CInode *>(lock->get_parent()))) {
   	dout(20) << " found child inode: " << *(lock->get_parent()) << dendl;
   	if (!lock->is_dirty()) {
   	  ++it;
@@ -5504,7 +5505,7 @@ void Locker::propagate_rstats_internal(MDRequestRef& mdr)
 	  //some non-stable state, but to make as little modification to the
 	  //existing locking mechanism as possible, we mark it here, and 
 	  //clear quickflush if the lock didn't go into any non-stable state
-	  mark_nudging_nestlock(mdr->rstats_propagate_time, lock, true);
+	  mark_nudging_nestlock(make_pair(mdr->rstats_propagate_time, to), lock, true);
  	  C_MDS_RetryRequests_WithLock* onStable = new C_MDS_RetryRequests_WithLock(mdcache, mdr, lock);
   	  bool waited = scatter_nudge(lock, onStable);
   	  dout(20) << "waited: " << waited << dendl;
@@ -5528,11 +5529,11 @@ void Locker::propagate_rstats_internal(MDRequestRef& mdr)
     }
   } while (once_more);
 
-  for (auto lock : nudging_nestlocks[utime_t()]) {
+  for (auto lock : nudging_nestlocks[make_pair(utime_t(), (CInode*)NULL)]) {
     CInode* ino = static_cast<CInode*>(lock->get_parent());
-    if ((!ino->get_rstat_dirty_from().is_zero()
+    if (((!ino->get_rstat_dirty_from().is_zero()
 	  && ino->get_rstat_dirty_from() <= mdr->rstats_propagate_time)
-	|| ino->get_dirfrags_rstat_dirty_from() <= mdr->rstats_propagate_time
+	|| ino->get_dirfrags_rstat_dirty_from() <= mdr->rstats_propagate_time)
 	&& !lock->is_quickflush()) {
       lock->add_waiter(SimpleLock::WAIT_STABLE, new C_MDS_RetryRequests_WithLock(mdcache, mdr, lock));
     }
@@ -5542,27 +5543,27 @@ void Locker::propagate_rstats_internal(MDRequestRef& mdr)
   
   if (nudged) {
     mds->mdlog->flush();
-  } else if (!nudging_nestlocks[mdr->rstats_propagate_time].size()) {
+  } else if (!nudging_nestlocks[make_pair(mdr->rstats_propagate_time, to)].size()) {
     mdr->internal_op_finish->complete(0);
     mdcache->request_finish(mdr);
   }
 }
 
-void Locker::mark_nudging_nestlock(utime_t propagate_time, ScatterLock* lock, bool quickflush) {
-  nudging_nestlocks[propagate_time].insert(lock);
-  if (!propagate_time.is_zero())
-    lock->add_propagate_time(propagate_time);
+void Locker::mark_nudging_nestlock(PropagationId propagate_id, ScatterLock* lock, bool quickflush) {
+  nudging_nestlocks[propagate_id].insert(lock);
+  if (!propagate_id.first.is_zero())
+    lock->add_propagate_id(propagate_id);
   if (quickflush)
     lock->set_quickflush();
 }
 
 void Locker::nestlock_nudged(ScatterLock* lock) {
-  for (auto propagate_time : lock->get_propagate_times()) {
-    nudging_nestlocks[propagate_time].erase(lock);
-    if (!nudging_nestlocks[propagate_time].size())
-      nudging_nestlocks.erase(propagate_time);
+  for (auto propagate_id : lock->get_propagate_ids()) {
+    nudging_nestlocks[propagate_id].erase(lock);
+    if (!nudging_nestlocks[propagate_id].size())
+      nudging_nestlocks.erase(propagate_id);
   }
-  nudging_nestlocks[utime_t()].erase(lock);
-  lock->clear_propagate_times();
+  nudging_nestlocks[make_pair(utime_t(), (CInode*)NULL)].erase(lock);
+  lock->clear_propagate_ids();
   lock->clear_quickflush();
 }

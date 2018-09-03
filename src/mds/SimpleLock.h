@@ -715,5 +715,4 @@ inline ostream& operator<<(ostream& out, const SimpleLock& l)
   return out;
 }
 
-
 #endif

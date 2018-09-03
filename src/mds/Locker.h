@@ -169,10 +169,10 @@ protected:
   void scatter_writebehind_finish(ScatterLock *lock, MutationRef& mut);
 
   xlist<ScatterLock*> updated_scatterlocks;
-  map<utime_t, set<ScatterLock*>> nudging_nestlocks;
+  map<PropagationId, set<ScatterLock*>> nudging_nestlocks;
 
 public:
-  void mark_nudging_nestlock(utime_t propagate_time, ScatterLock* lock, bool quickflush=false);
+  void mark_nudging_nestlock(PropagationId  propagate_id, ScatterLock* lock, bool quickflush=false);
 
   void nestlock_nudged(ScatterLock* lock);
 
