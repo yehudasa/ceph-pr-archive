@@ -149,6 +149,7 @@ target_link_libraries(ceph_test_librbd_api
   ceph-common
   librbd
   librados
+  Boost::system
   ${UNITTEST_LIBS})
 
 add_executable(ceph_test_librbd_fsx

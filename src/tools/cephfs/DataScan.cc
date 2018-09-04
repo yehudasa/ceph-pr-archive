@@ -1201,7 +1201,7 @@ int DataScan::scan_frags()
         auto q = parent_bl.cbegin();
         backtrace.decode(q);
       } catch (buffer::error &e) {
-        dout(4) << "Corrupt backtrace on '" << oid << "': " << e << dendl;
+        dout(4) << "Corrupt backtrace on '" << oid << "': " << e.what() << dendl;
         if (!force_corrupt) {
           return -EINVAL;
         } else {
@@ -1216,7 +1216,7 @@ int DataScan::scan_frags()
         auto q = layout_bl.cbegin();
         decode(loaded_layout, q);
       } catch (buffer::error &e) {
-        dout(4) << "Corrupt layout on '" << oid << "': " << e << dendl;
+        dout(4) << "Corrupt layout on '" << oid << "': " << e.what() << dendl;
         if (!force_corrupt) {
           return -EINVAL;
         }
@@ -1457,7 +1457,8 @@ int MetadataDriver::get_frag_of(
       backtrace.decode(q);
       have_backtrace = true;
     } catch (buffer::error &e) {
-      dout(4) << "Corrupt backtrace on '" << root_frag_oid << "': " << e << dendl;
+      dout(4) << "Corrupt backtrace on '" << root_frag_oid << "': "
+	      << e.what() << dendl;
     }
   }
 
