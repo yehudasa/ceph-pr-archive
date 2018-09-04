@@ -106,13 +106,13 @@ int rgw_process_authenticated(RGWHandler_REST * const handler,
     return ret;
   }
 
-  ldpp_dout(op, 2) << "pre-executing" << dendl;
+  ldpp_dout(op, 2) << "pre-executing, latency=" << s->time_elapsed() << dendl;
   op->pre_exec();
 
-  ldpp_dout(op, 2) << "executing" << dendl;
+  ldpp_dout(op, 2) << "executing, latency=" << s->time_elapsed() << dendl;
   op->execute();
 
-  ldpp_dout(op, 2) << "completing" << dendl;
+  ldpp_dout(op, 2) << "completing, latency=" << s->time_elapsed() << dendl;
   op->complete();
 
   return 0;
@@ -245,6 +245,7 @@ done:
   dout(1) << "====== req done req=" << hex << req << dec
 	  << " op status=" << op_ret
 	  << " http_status=" << s->err.http_ret
+	  << " latency=" << s->time_elapsed()
 	  << " ======"
 	  << dendl;
 
