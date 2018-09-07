@@ -41,7 +41,6 @@
 #include "tracing/bluestore_impl.h"
 #include "tracing/bluefs_impl.h"
 #include "tracing/bluestore_blob_impl.h"
-#include "tracing/bluestore_cache_impl.h"
 #include "tracing/bluestore_lru_cache_impl.h"
 
 #define dout_context cct
@@ -67,6 +66,7 @@ MEMPOOL_DEFINE_OBJECT_FACTORY(BlueStore::SharedBlob, bluestore_shared_blob,
 MEMPOOL_DEFINE_OBJECT_FACTORY(BlueStore::TransContext, bluestore_transcontext,
 			      bluestore_txc);
 
+#include "tracing/ceph_logging_impl.h"
 
 // kv store prefixes
 const string PREFIX_SUPER = "S";   // field -> value
@@ -832,6 +832,12 @@ void BlueStore::LRUCache::_trim(uint64_t onode_max, uint64_t buffer_max)
    uint64_t, buffer_max, buffer_max,
    " onodes %d / %llu buffers %llu / %llu");
 
+  trace(20, "bluestore", "onodes {} / {} buffers {} / {}",
+   onode_lru.size(),
+   onode_max,
+   buffer_size,
+   buffer_max);
+
   _audit("trim start");
 
   // buffers
@@ -1046,9 +1052,8 @@ void BlueStore::TwoQCache::_adjust_buffer_size(Buffer *b, int64_t delta)
 
 void BlueStore::TwoQCache::_trim(uint64_t onode_max, uint64_t buffer_max)
 {
-  dout(20) << __func__ << " onodes " << onode_lru.size() << " / " << onode_max
-	   << " buffers " << buffer_bytes << " / " << buffer_max
-	   << dendl;
+  trace(20, "bluestore.2QCache", "onodes {} / {} buffers {} / {}",
+    onode_lru.size(), onode_max, buffer_bytes, buffer_max);
 
   _audit("trim start");
 
@@ -4605,7 +4610,9 @@ void BlueStore::_validate_bdev()
 //    dout(1) << __func__ << " main device size " << byte_u_t(dev_size)
 //            << " is too small, disable bluestore_bluefs_min for now"
 //            << dendl;
-    trace_bluestore_disable_bluefs_min(byte_u_t(dev_size));
+    trace_disable_bluefs_min(1, bluestore,
+     byte_u_t, dev_size, byte_u_t(dev_size),
+     "main device size %s is too small, disable bluestore_bluefs_min for now");
     ceph_assert(dev_size >= _get_ondisk_reserved());
 
     int r = cct->_conf.set_val("bluestore_bluefs_min", "0");
@@ -7437,6 +7444,8 @@ int BlueStore::read(
     trace_read_inject_random_eio(0, bluestore, ": inject random EIOD");
     r = -EIO;
   }
+  trace(10, "bluestore", "read {}, {}, {}, {} and {}",
+   cid, oid, offset, length, r);
   trace_read(10, bluestore,
              coll_t, cid, cid,
              ghobject_t, oid, oid,
@@ -8763,6 +8772,8 @@ void BlueStore::_txc_state_proc(TransContext *txc)
                               void*, txc, txc,
                               string, state_name, txc->get_state_name(),
                               " txc %s %s");
+    trace(10, "bluestore", "txc_state_proc_name txc {} {}",
+     fmt::ptr(txc), txc->get_state_name());
     switch (txc->state) {
     case TransContext::STATE_PREPARE:
       txc->log_state_latency(logger, l_bluestore_state_prepare_lat);
@@ -9500,8 +9511,7 @@ void BlueStore::_kv_sync_thread()
 	  }
 	  bufferlist bl;
 	  encode(bluefs_extents, bl);
-	  dout(10) << __func__ << " bluefs_extents now 0x" << std::hex
-		   << bluefs_extents << std::dec << dendl;
+	  trace(10, "bluestore", "bluefs_extents now 0x{0:x}", bluefs_extents);
 	  synct->set(PREFIX_SUPER, "bluefs_extents", bl);
 	}
       }
@@ -9562,11 +9572,11 @@ void BlueStore::_kv_sync_thread()
 	ceph::timespan dur_flush = after_flush - start;
 	ceph::timespan dur_kv = finish - after_flush;
 	ceph::timespan dur = finish - start;
-	dout(20) << __func__ << " committed " << kv_committing.size()
-	  << " cleaned " << deferred_stable.size()
-	  << " in " << dur
-	  << " (" << dur_flush << " flush + " << dur_kv << " kv commit)"
-	  << dendl;
+	trace(20, "bluestore",
+	  "committed {} cleaned {} in {} ({} flush + {} kv commit)",
+	  kv_committing.size(),
+	  deferred_stable.size(),
+	  dur, dur_flush, dur_kv);
 	logger->tinc(l_bluestore_kv_flush_lat, dur_flush);
 	logger->tinc(l_bluestore_kv_commit_lat, dur_kv);
 	logger->tinc(l_bluestore_kv_sync_lat, dur);
@@ -9618,8 +9628,8 @@ void BlueStore::_kv_finalize_thread()
       kv_committed.swap(kv_committing_to_finalize);
       deferred_stable.swap(deferred_stable_to_finalize);
       l.unlock();
-      dout(20) << __func__ << " kv_committed " << kv_committed << dendl;
-      dout(20) << __func__ << " deferred_stable " << deferred_stable << dendl;
+      trace(20, "bluestore", "kv_committed {}", kv_committed);
+      trace(20, "bluestore", "deferred_stable {}", deferred_stable);
 
       auto start = mono_clock::now();
 
@@ -9675,7 +9685,7 @@ bluestore_deferred_op_t *BlueStore::_get_deferred_op(
 
 void BlueStore::_deferred_queue(TransContext *txc)
 {
-  dout(20) << __func__ << " txc " << txc << " osr " << txc->osr << dendl;
+  trace(20, "bluestore", "txc {} osr {}", fmt::ptr(txc), txc->osr);
   deferred_lock.lock();
   if (!txc->osr->deferred_pending &&
       !txc->osr->deferred_running) {
@@ -9706,8 +9716,8 @@ void BlueStore::_deferred_queue(TransContext *txc)
 
 void BlueStore::deferred_try_submit()
 {
-  dout(20) << __func__ << " " << deferred_queue.size() << " osrs, "
-	   << deferred_queue_size << " txcs" << dendl;
+  trace(20, "bluestore", "{} osrs, {} txcs",
+    deferred_queue.size(), deferred_queue_size);
   std::lock_guard<std::mutex> l(deferred_lock);
   vector<OpSequencerRef> osrs;
   osrs.reserve(deferred_queue.size());
@@ -9720,11 +9730,10 @@ void BlueStore::deferred_try_submit()
 	_deferred_submit_unlock(osr.get());
 	deferred_lock.lock();
       } else {
-	dout(20) << __func__ << "  osr " << osr << " already has running"
-		 << dendl;
+        trace(20, "bluestore", "osr {} already has running", osr);
       }
     } else {
-      dout(20) << __func__ << "  osr " << osr << " has no pending" << dendl;
+      trace(20, "bluestore", "osr {} has no pending", osr);
     }
   }
 }
@@ -9756,9 +9765,8 @@ void BlueStore::_deferred_submit_unlock(OpSequencer *osr)
   while (true) {
     if (i == b->iomap.end() || i->first != pos) {
       if (bl.length()) {
-	dout(20) << __func__ << " write 0x" << std::hex
-		 << start << "~" << bl.length()
-		 << " crc " << bl.crc32c(-1) << std::dec << dendl;
+        trace(20, "bluestore", "write 0x{0:x}~{1:x} crc {2:x}",
+          start, bl.length(), bl.crc32c(-1));
 	if (!g_conf()->bluestore_debug_omit_block_device_write) {
 	  logger->inc(l_bluestore_deferred_write_ops);
 	  logger->inc(l_bluestore_deferred_write_bytes, bl.length());
@@ -9773,9 +9781,8 @@ void BlueStore::_deferred_submit_unlock(OpSequencer *osr)
       pos = i->first;
       bl.clear();
     }
-    dout(20) << __func__ << "   seq " << i->second.seq << " 0x"
-	     << std::hex << pos << "~" << i->second.bl.length() << std::dec
-	     << dendl;
+    trace(20, "bluestore", "seq {} 0x{1:x}~{2:x}",
+      i->second.seq, pos, i->second.bl.length());
     if (!bl.length()) {
       start = pos;
     }
@@ -9917,6 +9924,8 @@ int BlueStore::queue_transactions(
 
   Collection *c = static_cast<Collection*>(ch.get());
   OpSequencer *osr = c->osr.get();
+  trace(10, "bluestore", "queue_transactions ch {} {}",
+   c, c->cid);
   trace_queue_transactions(10, bluestore,
                            void*, collection, c,
                            coll_t, cid, c->cid,
@@ -10629,13 +10638,13 @@ void BlueStore::_do_write_small(
 	    }
 	  }
 	  b->dirty_blob().calc_csum(b_off, bl);
-	  dout(20) << __func__ << "  lex old " << *ep << dendl;
+	  trace(20, "bluestore", "lex old {}", *ep);
 	  Extent *le = o->extent_map.set_lextent(c, offset, b_off + head_pad, length,
 						 b,
 						 &wctx->old_extents);
 	  b->dirty_blob().mark_used(le->blob_offset, le->length);
 	  txc->statfs_delta.stored() += le->length;
-	  dout(20) << __func__ << "  lex " << *le << dendl;
+	  trace(20, "bluestore", "lex {}", *le);
 	  logger->inc(l_bluestore_write_small_unused);
 	  return;
 	}
@@ -11042,7 +11051,7 @@ int BlueStore::_do_alloc_write(
   }
   ceph_assert(prealloc_left == (int64_t)need);
 
-  dout(20) << __func__ << " prealloc " << prealloc << dendl;
+  trace(20, "bluestore", "prealloc {}", prealloc);
   auto prealloc_pos = prealloc.begin();
 
   for (auto& wi : wctx->writes) {
@@ -11063,8 +11072,8 @@ int BlueStore::_do_alloc_write(
       unsigned csum_order;
       if (l->length() != wi.blob_length) {
         // hrm, maybe we could do better here, but let's not bother.
-        dout(20) << __func__ << " forcing csum_order to block_size_order "
-                << block_size_order << dendl;
+        trace(20, "bluestore", "forcing csum_order to block_size_order {}",
+          block_size_order);
 	csum_order = block_size_order;
       } else {
         csum_order = std::min(wctx->csum_order, ctz(l->length()));
@@ -11076,18 +11085,16 @@ int BlueStore::_do_alloc_write(
       if ((suggested_boff % (1 << csum_order)) == 0 &&
            suggested_boff + final_length <= max_bsize &&
            suggested_boff > b_off) {
-        dout(20) << __func__ << " forcing blob_offset to 0x"
-                 << std::hex << suggested_boff << std::dec << dendl;
+        trace(20, "bluestore", "forcing blob_offset to 0x{0:x}",
+          suggested_boff);
         ceph_assert(suggested_boff >= b_off);
         csum_length += suggested_boff - b_off;
         b_off = suggested_boff;
       }
       if (csum != Checksummer::CSUM_NONE) {
-        dout(20) << __func__ << " initialize csum setting for new blob " << *b
-                 << " csum_type " << Checksummer::get_csum_type_string(csum)
-                 << " csum_order " << csum_order
-                 << " csum_length 0x" << std::hex << csum_length << std::dec
-                 << dendl;
+        trace(20, "bluestore", "initialize csum setting for new blob {0} "
+          "csum_type {1} csum_order {2} csum_length 0x{3:x}",
+          *b, Checksummer::get_csum_type_string(csum), csum_order, csum_length);
         dblob.init_csum(csum, csum_order, csum_length);
       }
     }
@@ -11384,9 +11391,8 @@ void BlueStore::_choose_write_options(
     wctx->target_blob_size = min_alloc_size * 2;
   }
 
-  dout(20) << __func__ << " prefer csum_order " << wctx->csum_order
-           << " target_blob_size 0x" << std::hex << wctx->target_blob_size
-           << std::dec << dendl;
+  trace(20, "bluestore", "prefer csum_order {0} target_blob_size {1:x}",
+    wctx->csum_order, wctx->target_blob_size);
 }
 
 int BlueStore::_do_gc(
@@ -11428,11 +11434,11 @@ int BlueStore::_do_gc(
     o->extent_map.fault_range(db, *dirty_start, *dirty_end);
   }
 
-  dout(30) << __func__ << " alloc write" << dendl;
+  // TODO: fix macro to support no payload
+  trace(30, "bluestore", "alloc write", "");
   int r = _do_alloc_write(txc, c, o, &wctx_gc);
   if (r < 0) {
-    derr << __func__ << " _do_alloc_write failed with " << cpp_strerror(r)
-         << dendl;
+    trace_error("bluestore", "_do_alloc_write failed with {}", cpp_strerror(r));
     return r;
   }
 
@@ -11451,14 +11457,9 @@ int BlueStore::_do_write(
 {
   int r = 0;
 
-  dout(20) << __func__
-	   << " " << o->oid
-	   << " 0x" << std::hex << offset << "~" << length
-	   << " - have 0x" << o->onode.size
-	   << " (" << std::dec << o->onode.size << ")"
-	   << " bytes"
-	   << " fadvise_flags 0x" << std::hex << fadvise_flags << std::dec
-	   << dendl;
+  trace(20, "bluestore", "{0} 0x{1:x}~{2:x} - have 0x{3:x} ({4})"
+    "bytes fadvise_flags 0x{5:x}",
+    o->oid, offset, length, o->onode.size, o->onode.size, fadvise_flags);
   _dump_onode(o);
 
   if (length == 0) {
@@ -11478,8 +11479,7 @@ int BlueStore::_do_write(
   _do_write_data(txc, c, o, offset, length, bl, &wctx);
   r = _do_alloc_write(txc, c, o, &wctx);
   if (r < 0) {
-    derr << __func__ << " _do_alloc_write failed with " << cpp_strerror(r)
-	 << dendl;
+    trace_error("bluestore", "_do_alloc_write failed with {}", cpp_strerror(r));
     goto out;
   }
 
@@ -11493,8 +11493,7 @@ int BlueStore::_do_write(
 
   _wctx_finish(txc, c, o, &wctx);
   if (end > o->onode.size) {
-    dout(20) << __func__ << " extending size to 0x" << std::hex << end
-             << std::dec << dendl;
+    trace(20, "bluestore", "extending size to 0x{0:x}", end);
     o->onode.size = end;
   }
 
@@ -11565,9 +11564,8 @@ int BlueStore::_zero(TransContext *txc,
     _assign_nid(txc, o);
     r = _do_zero(txc, c, o, offset, length);
   }
-  dout(10) << __func__ << " " << c->cid << " " << o->oid
-	   << " 0x" << std::hex << offset << "~" << length << std::dec
-	   << " = " << r << dendl;
+  trace(10, "bluestore", "{0} {1} 0x{2:x}~{3:x} = {4}",
+    c->cid, o->oid, offset, length, r);
   return r;
 }
 

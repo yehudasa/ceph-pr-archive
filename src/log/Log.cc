@@ -32,7 +32,6 @@
 #include "tracing/bluestore.h"
 #include "tracing/bluefs.h"
 #include "tracing/bluestore_blob.h"
-#include "tracing/bluestore_cache.h"
 #include "tracing/bluestore_lru_cache.h"
 #undef TRACEPOINT_PROBE_DYNAMIC_LINKAGE
 #undef TRACEPOINT_DEFINE
