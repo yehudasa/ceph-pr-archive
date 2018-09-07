@@ -3849,7 +3849,8 @@ int main(int argc, const char **argv)
                                  (is_read_only_set ? &read_only : NULL),
                                  endpoints, ptier_type,
                                  psync_from_all, sync_from, sync_from_rm,
-                                 predirect_zone);
+                                 predirect_zone,
+				 store->svc.sync_modules->get_manager());
 	if (ret < 0) {
 	  cerr << "failed to add zone " << zone_name << " to zonegroup " << zonegroup.get_name() << ": "
 	       << cpp_strerror(-ret) << std::endl;
@@ -4280,7 +4281,8 @@ int main(int argc, const char **argv)
                                    ptier_type,
                                    psync_from_all,
                                    sync_from, sync_from_rm,
-                                   predirect_zone);
+                                   predirect_zone,
+				   store->svc.sync_modules->get_manager());
 	  if (ret < 0) {
 	    cerr << "failed to add zone " << zone_name << " to zonegroup " << zonegroup.get_name()
 		 << ": " << cpp_strerror(-ret) << std::endl;
@@ -4562,7 +4564,8 @@ int main(int argc, const char **argv)
                                  (is_read_only_set ? &read_only : NULL),
                                  endpoints, ptier_type,
                                  psync_from_all, sync_from, sync_from_rm,
-                                 predirect_zone);
+                                 predirect_zone,
+				 store->svc.sync_modules->get_manager());
 	if (ret < 0) {
 	  cerr << "failed to update zonegroup: " << cpp_strerror(-ret) << std::endl;
 	  return -ret;
@@ -6893,7 +6896,7 @@ next:
     }
 
     RGWSyncModuleInstanceRef sync_module;
-    int ret = store->get_sync_modules_manager()->create_instance(g_ceph_context, store->get_zone().tier_type, 
+    int ret = store->svc.sync_modules->get_manager()->create_instance(g_ceph_context, store->get_zone().tier_type, 
         store->get_zone_params().tier_config, &sync_module);
     if (ret < 0) {
       lderr(cct) << "ERROR: failed to init sync module instance, ret=" << ret << dendl;
