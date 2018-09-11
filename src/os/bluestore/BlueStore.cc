@@ -42,6 +42,14 @@
 #include "tracing/bluefs_impl.h"
 #include "tracing/bluestore_blob_impl.h"
 #include "tracing/bluestore_lru_cache_impl.h"
+#if WITH_LTTNG_LOGGING
+#include "tracing/ceph_logging_impl.h"
+#endif
+
+#ifndef WITH_LTTNG_LOGGING
+#define trace(...)
+#define trace_error(...)
+#endif
 
 #define dout_context cct
 #define dout_subsys ceph_subsys_bluestore
@@ -65,8 +73,6 @@ MEMPOOL_DEFINE_OBJECT_FACTORY(BlueStore::SharedBlob, bluestore_shared_blob,
 // bluestore_txc
 MEMPOOL_DEFINE_OBJECT_FACTORY(BlueStore::TransContext, bluestore_transcontext,
 			      bluestore_txc);
-
-#include "tracing/ceph_logging_impl.h"
 
 // kv store prefixes
 const string PREFIX_SUPER = "S";   // field -> value
