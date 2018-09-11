@@ -23,6 +23,7 @@ list(APPEND msg_srcs
   async/AsyncMessenger.cc
   async/Protocol.cc
   async/ProtocolV1.cc
+  async/ProtocolV2.cc
   async/Event.cc
   async/EventSelect.cc
   async/PosixStack.cc
