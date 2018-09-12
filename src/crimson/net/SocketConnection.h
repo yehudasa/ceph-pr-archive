@@ -17,6 +17,7 @@
 #include <seastar/core/gate.hh>
 #include <seastar/core/reactor.hh>
 #include <seastar/core/shared_future.hh>
+#include <seastar/core/sharded.hh>
 
 #include "msg/Policy.h"
 #include "Connection.h"
@@ -32,7 +33,7 @@ using stop_t = seastar::stop_iteration;
 
 class SocketMessenger;
 class SocketConnection;
-using SocketConnectionRef = boost::intrusive_ptr<SocketConnection>;
+using SocketConnectionRef = seastar::shared_ptr<SocketConnection>;
 
 class SocketConnection : public Connection {
   SocketMessenger& messenger;
@@ -176,6 +177,8 @@ class SocketConnection : public Connection {
   seastar::future<> keepalive() override;
 
   seastar::future<> close() override;
+
+  seastar::shard_id shard_id() const override;
 
  public:
   /// Only call when SocketConnection first construct

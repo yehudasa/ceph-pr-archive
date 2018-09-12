@@ -14,7 +14,8 @@
 
 #pragma once
 
-#include <boost/intrusive_ptr.hpp>
+#include <seastar/core/shared_ptr.hh>
+#include <seastar/core/sharded.hh>
 
 #include "msg/msg_types.h"
 #include "msg/Message.h"
@@ -27,7 +28,8 @@ namespace ceph::net {
 using msgr_tag_t = uint8_t;
 
 class Connection;
-using ConnectionRef = boost::intrusive_ptr<Connection>;
+using ConnectionRef = seastar::shared_ptr<Connection>;
+using ConnectionXRef = seastar::lw_shared_ptr<seastar::foreign_ptr<ConnectionRef>>;
 
 class Dispatcher;
 
