@@ -181,7 +181,7 @@ class LTTngWrapper(Wrapper):
             v.close()
 
 
-    def generate_header(self, events, outdir):
+    def generate_header(self, events, outdir, disabled):
         fhandles = {}
         for e in events:
             if e.subsys not in fhandles:
@@ -191,47 +191,62 @@ class LTTngWrapper(Wrapper):
                     '/* This file was generated automatically by the tracetool script.',
                     '   Do not edit it manually. Refer to the documentation to add logging. */',
                     '')
-                out(fobj,
-                    '#ifndef %(usubsys)s_IMPL',
-                    '#define %(usubsys)s_IMPL',
-                    '',
-                    '#include "tracing/%(subsys)s.h"',
-                    usubsys=e.subsys.upper(),
-                    subsys=e.subsys)
+                if not disabled:
+                    out(fobj,
+                        '#ifndef %(usubsys)s_IMPL',
+                        '#define %(usubsys)s_IMPL',
+                        '',
+                        '#include "tracing/%(subsys)s.h"',
+                        usubsys=e.subsys.upper(),
+                        subsys=e.subsys)
+                else:
+                    out(fobj,
+                        '#ifndef %(usubsys)s_IMPL',
+                        '#define %(usubsys)s_IMPL',
+                        usubsys=e.subsys.upper(),
+                        subsys=e.subsys)
+
 
             fobj = fhandles[e.subsys]
-            # Write the event's function
-            out(fobj, '',
-                'static inline void __%(api)s(%(args)s)',
-                '{',
-                api=e.api(e.CEPH_TRACE),
-                args=", ".join([' '.join(arg[:2]) if is_valid_type(arg[0]) else ' '.join(('string', arg[1])) for arg in e.args]))
 
-            # the c_str() is a temporary hack. we can use operator std::string()
-            argnames = ", ".join(['(char*){}.c_str()'.format(arg[1]) if not is_valid_type(arg[0]) else arg[1] for arg in e.args])
-            if len(e.args) > 0:
-                argnames = ", " + argnames
+            if not disabled:
+                # Write the event's function
+                out(fobj, '',
+                    'static inline void __%(api)s(%(args)s)',
+                    '{',
+                    api=e.api(e.CEPH_TRACE),
+                    args=", ".join([' '.join(arg[:2]) if is_valid_type(arg[0]) else ' '.join(('string', arg[1])) for arg in e.args]))
 
-            out(fobj, '    tracepoint(%(subsys)s, %(name)s%(tp_args)s);',
-                subsys=e.subsys,
-                name=e.name,
-                tp_args=argnames)
+                # the c_str() is a temporary hack. we can use operator std::string()
+                argnames = ", ".join(['(char*){}.c_str()'.format(arg[1]) if not is_valid_type(arg[0]) else arg[1] for arg in e.args])
+                if len(e.args) > 0:
+                    argnames = ", " + argnames
 
-            out(fobj, '}', '')
+                out(fobj, '    tracepoint(%(subsys)s, %(name)s%(tp_args)s);',
+                    subsys=e.subsys,
+                    name=e.name,
+                    tp_args=argnames)
 
-            # Write the event's #define
-            define_str = '__loglevel, __subsys, '
-            if len(e.args) > 0:
-                define_str += ', '.join( ['_type{0}, _name{0}, _value{0}'.format(i) for i in range(len(e.args))] )
-                define_str += ', '
-            define_str += '__format'
+                out(fobj, '}', '')
 
-            out(fobj,
-                '#define %(api)s(%(defstr)s) __%(api)s(%(args)s)',
-                api=e.api(e.CEPH_TRACE),
-                defstr=define_str,
-                args=', '.join( ['_value{0}'.format(i) for i in range(len(e.args))] )
-                )
+                # Write the event's #define
+                define_str = '__loglevel, __subsys, '
+                if len(e.args) > 0:
+                    define_str += ', '.join( ['_type{0}, _name{0}, _value{0}'.format(i) for i in range(len(e.args))] )
+                    define_str += ', '
+                define_str += '__format'
+
+                out(fobj,
+                    '#define %(api)s(%(defstr)s) __%(api)s(%(args)s)',
+                    api=e.api(e.CEPH_TRACE),
+                    defstr=define_str,
+                    args=', '.join( ['_value{0}'.format(i) for i in range(len(e.args))] )
+                    )
+            else: # if disabled
+                # Write the event's #define
+                out(fobj, '',
+                    '#define %(api)s(...)',
+                    api=e.api(e.CEPH_TRACE))
 
         for v in fhandles.values():
             out(v, '', '#endif')
@@ -448,6 +463,7 @@ def main(args):
     parser.add_argument('-f', help='Source file', required=True)
     parser.add_argument('-t', help='Available types: tp, h, c', required=True)
     parser.add_argument('--outdir', help='Ceph build directory', required=True)
+    parser.add_argument('--disabled', help='Generate headers for LTTng disabled', action='store_true')
     parser.add_argument('--test', help='Run unit tests', action='store_true')
     parsed_args = parser.parse_args(args[1:])
 
@@ -463,7 +479,7 @@ def main(args):
     if parsed_args.t == 'tp':
         wrapper.generate_tp_file(events, parsed_args.outdir)
     elif parsed_args.t == 'h':
-        wrapper.generate_header(events, parsed_args.outdir)
+        wrapper.generate_header(events, parsed_args.outdir, parsed_args.disabled)
     elif parsed_args.t == 'c':
         wrapper.generate_c(events, parsed_args.outdir)
 
