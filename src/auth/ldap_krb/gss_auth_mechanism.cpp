@@ -12,24 +12,14 @@
  *
  */
 
-/* Include order and names:
- * a) Immediate related header
- * b) C libraries (if any),
- * c) C++ libraries,
- * d) Other support libraries
- * e) Other project's support libraries
- *
- * Within each section the includes should
- * be ordered alphabetically.
- */
-
 #include "gss_auth_mechanism.hpp"
 
 #include <cstring>
 #include <iostream>
 
 
-namespace gss_client_auth {
+namespace gss_client_auth 
+{
 
 
 GSSMechanismBase::
@@ -1345,5 +1335,5 @@ std::istream& operator>> (std::istream& in_stream,
   return in_stream;
 }
 
-// ----------------------------- END-OF-FILE --------------------------------//
+
 

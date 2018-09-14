@@ -15,13 +15,10 @@
 #ifndef CEPH_KRB_AUTH_HPP
 #define CEPH_KRB_AUTH_HPP
 
-#include "auth_mechanism.hpp"
-#include "auth_options.hpp"
 #include "common_utils.hpp"
 #include "gss_auth_mechanism.hpp"
-#include "gss_client.hpp"
 #include "gss_utils.hpp"
 
 #endif    //-- CEPH_KRB_AUTH_HPP
 
-// ----------------------------- END-OF-FILE --------------------------------//
+

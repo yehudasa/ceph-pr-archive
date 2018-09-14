@@ -12,17 +12,6 @@
  *
  */
 
-/* Include order and names:
- * a) Immediate related header
- * b) C libraries (if any),
- * c) C++ libraries,
- * d) Other support libraries
- * e) Other project's support libraries
- *
- * Within each section the includes should
- * be ordered alphabetically.
- */
-
 #include "KrbAuthorizeHandler.hpp"
 
 #include "common/debug.h"
@@ -37,11 +26,9 @@ bool KrbAuthorizeHandler::verify_authorizer(CephContext* ceph_ctx,
                                             uint64_t& global_id,  
                                             AuthCapsInfo& caps_info, 
                                             CryptoKey& session_key, 
-                                            uint64_t* auid, 
                                             std::unique_ptr<
                                               AuthAuthorizerChallenge>* challenge)
 {
-  constexpr auto SUBSYSTEM_ID(0);
   auto itr(authorizer_data.cbegin());
 
   try {
@@ -52,7 +39,7 @@ bool KrbAuthorizeHandler::verify_authorizer(CephContext* ceph_ctx,
     decode(entity_name, itr);
     decode(global_id, itr);
   } catch (const buffer::error& err) {
-    ldout(ceph_ctx, SUBSYSTEM_ID) 
+    ldout(ceph_ctx, 0) 
         << "Error: KrbAuthorizeHandler::verify_authorizer() failed!" << dendl;
     return false;
   }
@@ -65,5 +52,4 @@ int KrbAuthorizeHandler::authorizer_session_crypto()
   return SESSION_SYMMETRIC_AUTHENTICATE;
 }
 
-// ----------------------------- END-OF-FILE --------------------------------//
 

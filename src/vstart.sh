@@ -504,10 +504,10 @@ EOF
 EOF
 	elif [ "$gssapi_authx" -eq 1 ] ; then
 		wconf <<EOF
-	auth cluster required = cephx
-	auth service required = cephx
-	auth client required = krb
-	auth ktab client file = $CEPH_DEV_DIR/krb_\$name.keytab
+	auth cluster required = gss
+	auth service required = gss
+	auth client required = gss
+	gss ktab client file = $CEPH_DEV_DIR/gss_\$name.keytab
 EOF
 	else 
 		wconf <<EOF

@@ -15,17 +15,6 @@
 #ifndef KRB_PROTOCOL_HPP
 #define KRB_PROTOCOL_HPP
 
-/* Include order and names:
- * a) Immediate related header
- * b) C libraries (if any),
- * c) C++ libraries,
- * d) Other support libraries
- * e) Other project's support libraries
- *
- * Within each section the includes should
- * be ordered alphabetically.
- */
-
 #include "auth/Auth.h"
 #include "ceph_krb_auth.hpp"
 
@@ -35,26 +24,12 @@
 #include <string>
 
 
-/*
-//-- TODO: Move to gss_auth_mechanism.hpp
-static const gss_OID_desc GSS_API_KRB5_OID_PTR = 
-  { 9, (void *)"\052\206\110\206\367\022\001\002\002" };
-static const std::string GSS_TARGET_DEFAULT_NAME("ceph"); 
-
-enum class GSSAuthenticationRequest {
-  GSS_CRYPTO_ERR    = 1,
-  GSS_MUTUAL        = 0x100,
-  GSS_TOKEN         = 0x200,
-  GSS_REQUEST_MASK  = 0x0F00
-};
-*/
-
 struct AuthAuthorizer;
 
 class KrbAuthorizer : public AuthAuthorizer 
 {
   public:
-    KrbAuthorizer() : AuthAuthorizer(CEPH_AUTH_KRB5) { }
+    KrbAuthorizer() : AuthAuthorizer(CEPH_AUTH_GSS) { }
     ~KrbAuthorizer() = default; 
     bool build_authorizer(const EntityName& entity_name, 
                           const uint64_t guid) 
@@ -141,5 +116,4 @@ std::string gss_auth_show_status(const OM_uint32, const OM_uint32);
 
 #endif    //-- KRB_PROTOCOL_HPP
 
-// ----------------------------- END-OF-FILE --------------------------------//
 

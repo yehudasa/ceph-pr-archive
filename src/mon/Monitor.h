@@ -169,7 +169,7 @@ public:
   Messenger *mgr_messenger;
   MgrClient mgr_client;
   uint64_t mgr_proxy_bytes = 0;  // in-flight proxied mgr command message bytes
-  std::string krb_ktfile_client;
+  std::string gss_ktfile_client{};
 
 private:
   void new_tick();

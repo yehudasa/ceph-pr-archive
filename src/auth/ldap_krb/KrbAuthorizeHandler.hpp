@@ -15,17 +15,6 @@
 #ifndef KRB_AUTHORIZE_HANDLER_HPP
 #define KRB_AUTHORIZE_HANDLER_HPP
 
-/* Include order and names:
- * a) Immediate related header
- * b) C libraries (if any),
- * c) C++ libraries,
- * d) Other support libraries
- * e) Other project's support libraries
- *
- * Within each section the includes should
- * be ordered alphabetically.
- */
-
 #include "auth/AuthAuthorizeHandler.h"
 
 class KrbAuthorizeHandler : public AuthAuthorizeHandler 
@@ -34,7 +23,6 @@ class KrbAuthorizeHandler : public AuthAuthorizeHandler
                          bufferlist&, bufferlist&,
                          EntityName&, uint64_t&, 
                          AuthCapsInfo&, CryptoKey&, 
-                         uint64_t* = nullptr, 
                          std::unique_ptr<
                           AuthAuthorizerChallenge>* = nullptr) override;
 
@@ -45,5 +33,5 @@ class KrbAuthorizeHandler : public AuthAuthorizeHandler
 
 #endif    //-- KRB_AUTHORIZE_HANDLER_HPP
 
-// ----------------------------- END-OF-FILE --------------------------------//
+
 

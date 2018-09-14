@@ -36,7 +36,7 @@ AuthSessionHandler *get_auth_session_handler(CephContext *cct, int protocol, Cry
     return new AuthNoneSessionHandler(cct, key);
   case CEPH_AUTH_UNKNOWN:
     return new AuthUnknownSessionHandler(cct, key);
-  case CEPH_AUTH_KRB5: 
+  case CEPH_AUTH_GSS: 
     return new KrbSessionHandler(cct, key);
   }
   return NULL;

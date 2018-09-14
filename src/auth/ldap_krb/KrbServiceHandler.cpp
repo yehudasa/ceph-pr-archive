@@ -12,17 +12,6 @@
  *
  */
 
-/* Include order and names:
- * a) Immediate related header
- * b) C libraries (if any),
- * c) C++ libraries,
- * d) Other support libraries
- * e) Other project's support libraries
- *
- * Within each section the includes should
- * be ordered alphabetically.
- */
-
 #include "KrbServiceHandler.hpp"
 
 #include <errno.h>
@@ -41,12 +30,8 @@
 int KrbServiceHandler::handle_request(bufferlist::const_iterator& indata, 
                                       bufferlist& buff_list, 
                                       uint64_t& global_id, 
-                                      AuthCapsInfo& caps, 
-                                      uint64_t* auid) 
+                                      AuthCapsInfo& caps) 
 {
-  constexpr auto SUBSYSTEM_ID(20);
-  constexpr auto SUBSYSTEM_ZERO(0);
-
   auto result(0);
   gss_buffer_desc gss_buffer_in = {0};
   gss_name_t gss_client_name = GSS_C_NO_NAME;
@@ -56,7 +41,7 @@ int KrbServiceHandler::handle_request(bufferlist::const_iterator& indata,
   OM_uint32 gss_result_flags(0); 
   std::string status_str(" ");
 
-  ldout(cct, SUBSYSTEM_ID) 
+  ldout(cct, 20) 
       << "KrbServiceHandler::handle_request() " << dendl; 
 
   KrbRequest krb_request; 
@@ -69,7 +54,7 @@ int KrbServiceHandler::handle_request(bufferlist::const_iterator& indata,
   gss_buffer_in.length = krb_token.m_token_blob.length();
   gss_buffer_in.value  = krb_token.m_token_blob.c_str();
 
-  ldout(cct, SUBSYSTEM_ID) 
+  ldout(cct, 20) 
       << "KrbClientHandler::handle_request() : Token Blob: " 
       << "\n"; 
   krb_token.m_token_blob.hexdump(*_dout); 
@@ -94,7 +79,7 @@ int KrbServiceHandler::handle_request(bufferlist::const_iterator& indata,
   switch (gss_major_status) {
     case GSS_S_CONTINUE_NEEDED: 
       {
-        ldout(cct, SUBSYSTEM_ID) 
+        ldout(cct, 20) 
             << "KrbServiceHandler::handle_response() : "
                "[KrbServiceHandler(GSS_S_CONTINUE_NEEDED)] " << dendl;
         result = 0;
@@ -104,20 +89,20 @@ int KrbServiceHandler::handle_request(bufferlist::const_iterator& indata,
     case GSS_S_COMPLETE: 
       {
         result = 0;
-        ldout(cct, SUBSYSTEM_ID) 
+        ldout(cct, 20) 
             << "KrbServiceHandler::handle_response() : "
                "[KrbServiceHandler(GSS_S_COMPLETE)] " << dendl; 
         if (!m_key_server->get_service_caps(entity_name, 
                                             CEPH_ENTITY_TYPE_MON, 
                                             caps)) {
           result = (-EACCES);
-          ldout(cct, SUBSYSTEM_ZERO)
+          ldout(cct, 0)
               << "KrbServiceHandler::handle_response() : "
                  "ERROR: Could not get MONITOR CAPS : " << entity_name << dendl;
         } else {
           if (!caps.caps.c_str()) {
             result = (-EACCES);
-            ldout(cct, SUBSYSTEM_ZERO)
+            ldout(cct, 0)
                 << "KrbServiceHandler::handle_response() : "
                    "ERROR: MONITOR CAPS invalid : " << entity_name << dendl;
           }
@@ -129,7 +114,7 @@ int KrbServiceHandler::handle_request(bufferlist::const_iterator& indata,
       {
         status_str = gss_auth_show_status(gss_major_status, 
                                           gss_minor_status);
-        ldout(cct, SUBSYSTEM_ZERO) 
+        ldout(cct, 0) 
             << "ERROR: KrbServiceHandler::handle_response() "
                "[gss_accept_sec_context()] failed! " 
             << gss_major_status << " " 
@@ -156,7 +141,7 @@ int KrbServiceHandler::handle_request(bufferlist::const_iterator& indata,
                                     reinterpret_cast<char*>
                                       (m_gss_buffer_out.value)));
     encode(krb_token, buff_list);
-    ldout(cct, SUBSYSTEM_ID) 
+    ldout(cct, 20) 
         << "KrbServiceHandler::handle_request() : Token Blob: " << "\n"; 
     krb_token.m_token_blob.hexdump(*_dout);
     *_dout << dendl;
@@ -170,9 +155,6 @@ int KrbServiceHandler::start_session(EntityName& name,
                                      bufferlist& buff_list,
                                      AuthCapsInfo& caps)
 {
-  constexpr auto SUBSYSTEM_ID(20);
-  constexpr auto SUBSYSTEM_ZERO(0);
-
   auto result(0);
   gss_buffer_desc gss_buffer_in = {0};
   gss_name_t gss_client_name = GSS_C_NO_NAME;
@@ -184,7 +166,7 @@ int KrbServiceHandler::start_session(EntityName& name,
   std::string gss_service_name(gss_utils::GSS_TARGET_DEFAULT_NAME);
 
   gss_buffer_in.length = gss_utils::GSS_TARGET_DEFAULT_NAME.length();
-  gss_buffer_in.value  = /*reinterpret_cast<void*>*/(const_cast<char*>(gss_service_name.c_str()));
+  gss_buffer_in.value  = (const_cast<char*>(gss_service_name.c_str()));
   entity_name = name;
 
   gss_major_status = gss_import_name(&gss_minor_status, 
@@ -194,7 +176,7 @@ int KrbServiceHandler::start_session(EntityName& name,
   if (gss_major_status != GSS_S_COMPLETE) {
     auto status_str(gss_auth_show_status(gss_major_status, 
                                          gss_minor_status));
-    ldout(cct, SUBSYSTEM_ZERO) 
+    ldout(cct, 0) 
         << "ERROR: KrbServiceHandler::start_session() "
            "[gss_import_name(gss_client_name)] failed! " 
         << gss_major_status << " " 
@@ -214,7 +196,7 @@ int KrbServiceHandler::start_session(EntityName& name,
   if (gss_major_status != GSS_S_COMPLETE) {
     auto status_str(gss_auth_show_status(gss_major_status, 
                                          gss_minor_status));
-    ldout(cct, SUBSYSTEM_ZERO) 
+    ldout(cct, 0) 
         << "ERROR: KrbServiceHandler::start_session() "
            "[gss_acquire_cred()] failed! " 
         << gss_major_status << " " 
@@ -234,7 +216,7 @@ int KrbServiceHandler::start_session(EntityName& name,
 
     using ceph::encode;
     encode(krb_response, buff_list);
-    return (CEPH_AUTH_KRB5);
+    return (CEPH_AUTH_GSS);
   }
 }
 
@@ -249,5 +231,4 @@ KrbServiceHandler::~KrbServiceHandler()
   gss_release_buffer(&gss_minor_status, static_cast<gss_buffer_t>(&m_gss_buffer_out)); 
 }
 
-// ----------------------------- END-OF-FILE --------------------------------//
 

@@ -1,335 +1,541 @@
-======================================================================
+=========================================================================================
 A Detailed Documentation on How to Set up Ceph Kerberos Authentication
-======================================================================
-Daniel Oliveira
-Last update: Aug 14, 2018
+=========================================================================================
+Daniel Oliveira (doliveira@suse.com)
+Last update: Oct 3, 2018
 
-This document provides deeper detail on the Cephx authorization protocol whose high level flow 
-is described in the memo by Yehuda (12/19/09).  Because this memo discusses details of 
-routines called and variables used, it represents a snapshot.  The code might be changed 
-subsequent to the creation of this document, and the document is not likely to be updated in
-lockstep.  With luck, code comments will indicate major changes in the way the protocol is
-implemented.
+This document provides details on the Kerberos authorization protocol. This is the 1st
+draft and we will try to keep it updated along with code changes that might take place.
 
-Introduction
+Several free implementations of this protocol are available (MIT, Heimdal, MS...),
+covering a wide range of operating systems. The Massachusetts Institute of Technology
+(MIT), where Kerberos was originally developed, continues to develop their Kerberos
+package and it is the implementation we chose to work with.
+`MIT Kerberos <http://web.mit.edu/Kerberos/>`_.
+
+Background
 -------------
 
-The basic idea of the protocol is based on Kerberos.  A client wishes to obtain something from
-a server.  The server will only offer the requested service to authorized clients.  Rather 
-than requiring each server to deal with authentication and authorization issues, the system 
-uses an authorization server.  Thus, the client must first communicate with the authorization 
-server to authenticate itself and to obtain credentials that will grant it access to the
-service it wants.
+Before we get into *Kerberos details*, let us define a few terms so we can understand what
+to expect from it, *what it can and can't do*.
 
-Authorization is not the same as authentication.  Authentication provides evidence that some 
-party is who it claims to be.  Authorization provides evidence that a particular party is
-allowed to do something.  Generally, secure authorization implies secure authentication 
-(since without authentication, you may authorize something for an imposter), but the reverse 
-is not necessarily true.  One can authenticate without authorizing.  The purpose 
-of this protocol is to authorize.
+Directory Services
+    A directory service is a customizable information store that functions as a single
+    point from which users can locate resources and services distributed throughout the
+    network. This customizable information store also gives administrators a single point
+    for managing its objects and their attributes. Although this information store
+    appears as a single point to the users of the network, it is actually most often
+    stored in a distributed form. A directory service consists of at least one *Directory
+    Server and a Directory Client* and are implemented based on *X.500 standards*.
+    *OpenLDAP, 389 Directory Server, MS Active Directory, NetIQ eDirectory* are some good
+    examples.
 
-The basic approach is to use symmetric cryptography throughout.  Each client C has its own
-secret key, known only to itself and the authorization server A.  Each server S has its own
-secret key, known only to itself and the authorization server A.  Authorization information 
-will be passed in tickets, encrypted with the secret key of the entity that offers the service.
-There will be a ticket that A gives to C, which permits C to ask A for other tickets.  This 
-ticket will be encrypted with A's key, since A is the one who needs to check it.  There will 
-later be tickets that A issues that allow C to communicate with S to ask for service.  These 
-tickets will be encrypted with S's key, since S needs to check them.   Since we wish to provide 
-security of the communications, as well, session keys are set up along with the tickets.  
-Currently, those session keys are only used for authentication purposes during this protocol 
-and the handshake between the client C and the server S, when the client provides its service 
-ticket.  They could be used for authentication or secrecy throughout, with some changes to 
-the system.
+    A directory service is often characterized as a *write-once-read-many-times service*,
+    meaning the data that would normally be stored in an directory service would not be
+    expected to change on every access.
 
-Several parties need to prove something to each other if this protocol is to achieve its 
-desired security effects.
+    The database that forms a directory service *is not designed for transactional data*.
 
-1.  The client C must prove to the authenticator A that it really is C.  Since everything
-is being done via messages, the client must also prove that the message proving authenticity
-is fresh, and is not being replayed by an attacker.
 
-2.  The authenticator A must prove to client C that it really is the authenticator.  Again,
-proof that replay is not occurring is also required.
+LDAP (Lightweight Directory Access Protocol v3)
+    LDAP is a set of LDAP Protocol Exchanges *(not an implementation of a server)* that
+    defines the method by which data is accessed. LDAPv3 is a standard defined by the
+    IETF in RFC 2251 and describes how data is represented in the Directory Service (the
+    Data Model or DIT).
 
-3.  A and C must securely share a session key to be used for distribution of later
-authorization material between them.  Again, no replay is allowable, and the key must be
-known only to A and C.
+    Finally, it defines how data is loaded into (imported) and saved from (exported) a
+    directory service (using LDIF). LDAP does not define how data is stored or
+    manipulated. Data Store is an 'automagic' process as far as the standard is concerned
+    and is generally handled by back-end modules.
 
-4.  A must receive evidence from C that allows A to look up C's authorized operations with
-server S.  
+    No Directory Service implementation has all the features of LDAP v3 protocol
+    implemented. All Directory Server implementations have their different problems
+    and/or anomalies, and features that may not return results as another Directory
+    Server implementation would.
 
-5.  C must receive a ticket from A that will prove to S that C can perform its authorized
-operations.   This ticket must be usable only by C.
 
-6.  C must receive from A a session key to protect the communications between C and S.  The
-session key must be fresh and not the result of a replay.
+Authentication
+    Authentication is about validating credentials (like User Name/ID and password) to
+    verify the identity. The system determines whether one is what they say they are
+    using their credentials.
 
-Getting Started With Authorization
------------------------------------
+    Usually, authentication is done by a username and password, and sometimes in
+    conjunction with *(single, two, or multi) factors of authentication*, which refers to
+    the various ways to be authenticated.
 
-When the client first needs to get service, it contacts the monitor.  At the moment, it has 
-no tickets.  Therefore, it uses the "unknown" protocol to talk to the monitor.  This protocol 
-is specified as ``CEPH_AUTH_UNKNOWN``.  The monitor also takes on the authentication server 
-role, A.  The remainder of the communications will use the cephx protocol (most of whose code 
-will be found in files in ``auth/cephx``).  This protocol is responsible for creating and 
-communicating the tickets spoken of above.  
 
-Currently, this document does not follow the pre-cephx protocol flow.  It starts up at the 
-point where the client has contacted the server and is ready to start the cephx protocol itself.
+Authorization
+    Authorization occurs after the identity is successfully authenticated by the system,
+    which ultimately gives one full permission to access the resources such as
+    information, files, databases, and so forth, almost anything. It determines the
+    ability to access the system and up to what extent (what kind of permissions/rights
+    are given and to where/what).
 
-Once we are in the cephx protocol, we can get the tickets.  First, C needs a ticket that 
-allows secure communications with A.  This ticket can then be used to obtain other tickets. 
-This is phase I of the protocol, and consists of a send from C to A and a response from A to C.
-Then, C needs a ticket to allow it to talk to S to get services.  This is phase II of the 
-protocol, and consists of a send from C to A and a response from A to C.
 
-Phase I:
---------
+Auditing
+    Auditing takes the results from both *authentication and authorization* and records
+    them into an audit log. The audit log records records all actions taking by/during
+    the authentication and authorization for later review by the administrators. While
+    authentication and authorization are preventive systems (in which unauthorized access
+    is prevented), auditing is a reactive system (in which it gives detailed log of
+    how/when/where someone accessed the environment).
 
-The client is set up to know that it needs certain things, using a variable called ``need``, 
-which is part of the ``AuthClientHandler`` class, which the ``CephxClientHandler`` inherits 
-from.  At this point, one thing that's encoded in the ``need`` variable is 
-``CEPH_ENTITY_TYPE_AUTH``, indicating that we need to start the authentication protocol 
-from scratch.  Since we're always talking to the same authorization server, if we've gone 
-through this step of the protocol before (and the resulting ticket/session hasn't timed out), 
-we can skip this step and just ask for client tickets.  But it must be done initially, and 
-we'll assume that we are in that state.
 
-The message C sends to A in phase I is build in ``CephxClientHandler::build_request()`` (in 
-``auth/cephx/CephxClientHandler.cc``).  This routine is used for more than one purpose.  
-In this case, we first call ``validate_tickets()`` (from routine 
-``CephXTicektManager::validate_tickets()`` which lives in ``auth/cephx/CephxProtocol.h``).  
-This code runs through the list of possible tickets to determine what we need, setting values 
-in the ``need`` flag as necessary.  Then we call ``ticket.get_handler()``.  This routine 
-(in ``CephxProtocol.h``) finds a ticket of the specified type (a ticket to perform 
-authorization) in the ticket map, creates a ticket handler object for it,  and puts the 
-handler into the right place in the map.  Then we hit specialized code to deal with individual 
-cases.  The case here is when we still need to authenticate to A (the 
-``if (need & CEPH_ENTITY_TYPE_AUTH)`` branch).
+Kerberos (KRB v5)
+    Kerberos is a network *authentication protocol*. It is designed to provide strong
+    authentication for client/server applications by using secret-key cryptography
+    (symmetric key). A free implementation of this protocol is available from the MIT.
+    However, Kerberos is available in many commercial products as well.
 
-We now create a message of type ``CEPH_AUTH_UNKNOWN``.  We need to authenticate 
-this message with C's secret key, so we fetch that from the local key repository.  (It's 
-called a key server in the code, but it's not really a separate machine or processing entity.
-It's more like the place where locally used keys are kept.)  We create a 
-random challenge, whose purpose is to prevent replays.  We encrypt that challenge.  We already 
-have a server challenge (a similar set of random bytes, but created by the server and sent to
-the client) from our pre-cephx stage.  We take both challenges and our secret key and 
-produce a combined encrypted challenge value, which goes into ``req.key``.
+    It was designed to provide secure authentication to services over an insecure network.
+    Kerberos uses tickets to authenticate a user, or service application and never
+    transmits passwords over the network in the clear. So both client and server can
+    prove their identity without sending any unencrypted secrets over the network.
 
-If we have an old ticket, we store it in ``req.old_ticket``.  We're about to get a new one.
+    Kerberos can be used for single sign-on (SSO). The idea behind SSO is simple, we want
+    to login just once and be able to use any service that we are entitled to, without
+    having to login on each of those services.
 
-The entire ``req`` structure, including the old ticket and the cryptographic hash of the two 
-challenges, gets put into the message.  Then we return from this function, and the 
-message is sent.
 
-We now switch over to the authenticator side, A.  The server receives the message that was 
-sent, of type ``CEPH_AUTH_UNKNOWN``.  The message gets handled in ``prep_auth()``, 
-in ``mon/AuthMonitor.cc``, which calls ``handle_request()`` is ``CephxServiceHandler.cc`` to 
-do most of the work.  This routine, also, handles multiple cases.  
+Simple Authentication and Security Layer (SASL)
+    SASL **(RFC 4422)** is a framework that helps developers to implement different
+    authentication mechanisms (implementing a series of challenges and responses),
+    allowing both clients and servers to negotiate a mutually acceptable mechanism for
+    each connection, instead of hard-coding them.
 
-The control flow is determined by the ``request_type`` in the ``cephx_header`` associated 
-with the message.  Our case here is ``CEPH_AUTH_UNKNOWN``.  We need the 
-secret key A shares with C, so we call ``get_secret()`` from out local key repository to get 
-it.  We should have set up a server challenge already with this client, so we make sure 
-we really do have one.  (This variable is specific to a ``CephxServiceHandler``, so there 
-is a different one for each such structure we create, presumably one per client A is 
-dealing with.)  If there is no challenge, we'll need to start over, since we need to 
-check the client's crypto hash, which depends on a server challenge, in part.
+    Examples of SASL mechanisms:
+        - ANONYMOUS **(RFC 4505)**
+            + For guest access, meaning *unauthenticated*
 
-We now call the same routine the client used to calculate the hash, based on the same values: 
-the client challenge (which is in the incoming message), the server challenge (which we saved), 
-and the client's key (which we just obtained).  We check to see if the client sent the same 
-thing we expected.  If so, we know we're talking to the right client.  We know the session is 
-fresh, because it used the challenge we sent it to calculate its crypto hash.  So we can
-give it an authentication ticket.
+        - CRAM-MD5 **(RFC 2195)**
+            + Simple challenge-response scheme based on *HMAC-MD5*. It does not establish
+            any security layer. *Less secure than DIGEST-MD5 and GSSAPI.*
 
-We fetch C's ``eauth`` structure.  This contains an ID, a key, and a set of caps (capabilities).
+        - DIGEST-MD5 **(RFC 2831)**
+            + HTTP Digest compatible *(partially)* challenge-response scheme based upon
+            MD5, offering a *data security layer*. It is preferred over PLAIN text
+            passwords, protecting against plain text attacks. It is a mandatory
+            authentication method for LDAPv3 servers.
 
-The client sent us its old ticket in the message, if it had one.  If so, we set a flag,
-``should_enc_ticket``, to true and set the global ID to the global ID in that old ticket.  
-If the attempt to decode its old ticket fails (most probably because it didn't have one),
-``should_enc_ticket`` remains false.  Now we set up the new ticket, filling in timestamps, 
-the name of C, the global ID provided in the method call (unless there was an old ticket), and 
-his ``auid``, obtained from the ``eauth`` structure obtained above.  We need a new session key 
-to help the client communicate securely with us, not using its permanent key.    We set the
-service ID to ``CEPH_ENTITY_TYPE_AUTH``, which will tell the client C what to do with the 
-message we send it.  We build a cephx response header and call 
-``cephx_build_service_ticket_reply()``.
+        - EXTERNAL **(RFCs 4422, 5246, 4301, 2119)**
+            + Where *authentication is implicit* in the context (i.e; for protocols using
+            IPsec or TLS [TLS/SSL to performing certificate-based authentication]
+            already). This method uses public keys for strong authentication.
 
-``cephx_build_service_ticket_reply()`` is in ``auth/cephx/CephxProtocol.cc``.  This 
-routine will build up the response message.   Much of it copies data from its parameters to 
-a message structure.  Part of that information (the session key and the validity period) 
-gets encrypted with C's permanent key.  If the ``should_encrypt_ticket`` flag is set, 
-encrypt it using the old ticket's key.  Otherwise, there was no old ticket key, so the 
-new ticket is not encrypted.  (It is, of course, already encrypted with A's permanent key.)  
-Presumably the point of this second encryption is to expose less material encrypted with 
-permanent keys.
+        - GS2 **(RFC 5801)**
+            + Family of mechanisms supports arbitrary GSS-API mechanisms in SASL
 
-Then we call the key server's ``get_service_caps()`` routine on the entity name, with a 
-flag ``CEPH_ENTITY_TYPE_MON``, and capabilities, which will be filled in by this routine.  
-The use of that constant flag means we're going to get the client's caps for A, not for some 
-other data server.  The ticket here is to access the authorizer A, not the service S.  The 
-result of this call is that the caps variable  (a parameter to the routine we're in) is 
-filled in with the monitor capabilities that will allow C to  access A's authorization services.
+        - NTLM (MS Proprietary)
+            + MS Windows NT LAN Manager authentication mechanism
 
-``handle_request()`` itself does not send the response message.  It builds up the 
-``result_bl``, which basically holds that message's contents, and the capabilities structure, 
-but it doesn't send the message.  We go back to ``prep_auth()``, in ``mon/AuthMonitor.cc``, 
-for that.    This routine does some fiddling around with the caps structure that just got 
-filled in.  There's a global ID that comes up as a result of this fiddling that is put into 
-the reply message.  The reply message is built here (mostly from the ``response_bl`` buffer) 
-and sent off.
+        - OAuth 1.0/2.0 **(RFCs 5849, 6749, 7628)**
+            + Authentication protocol for delegated resource access
 
-This completes Phase I of the protocol.  At this point, C has authenticated itself to A, and A has generated a new session key and ticket allowing C to obtain server tickets from A.
+        - OTP **(RFC 2444)**
+            + One-time password mechanism *(obsoletes the SKEY mechanism)*
 
-Phase II
---------
+        - PLAIN **(RFC 4616)**
+            + Simple Cleartext password mechanism **(RFC 4616)**. This is not a preferred
+            mechanism  for most applications because of its relative lack of strength.
 
-This phase starts when C receives the message from A containing a new ticket and session key.
-The goal of this phase is to provide C with a session key and ticket allowing it to
-communicate with S.
+        - SCRAM **(RFCs 5802, 7677)**
+            + Modern challenge-response scheme based mechanism with channel binding
+            support
 
-The message A sent to C is dispatched to ``build_request()`` in ``CephxClientHandler.cc``, 
-the same routine that was used early in Phase I to build the first message in the protocol.  
-This time, when ``validate_tickets()`` is called, the ``need`` variable will not contain 
-``CEPH_ENTITY_TYPE_AUTH``, so a different branch through the bulk of the routine will be 
-used.  This is the branch indicated by ``if (need)``.  We have a ticket for the authorizer, 
-but we still need service tickets.
 
-We must send another message to A to obtain the tickets (and session key) for the server 
-S.  We set the ``request_type`` of the message to ``CEPHX_GET_PRINCIPAL_SESSION_KEY`` and 
-call ``ticket_handler.build_authorizer()`` to obtain an authorizer.  This routine is in 
-``CephxProtocol.cc``.  We set the key for this authorizer to be the session key we just got 
-from A,and create a new nonce.  We put the global ID, the service ID, and the ticket into a 
-message buffer that is part of the authorizer.  Then we create a new ``CephXAuthorize`` 
-structure.  The nonce we just created goes there.  We encrypt this ``CephXAuthorize`` 
-structure with the current session key and stuff it into the authorizer's buffer.  We 
-return the authorizer.
+Generic Security Services Application Program Interface (GSSAPI)
+    GSSAPI **(RFCs 2078, 2743, 2744, 4121, 4752)** is widely used by protocol
+    implementers as a way to implement Kerberos v5 support in their applications. It
+    provides a generic interface and message format that can encapsulate authentication
+    exchanges from any authentication method that has a GSSAPI-compliant library.
 
-Back in ``build_request()``, we take the part of the authorizer that was just built (its 
-buffer, not the session key or anything else) and shove it into the buffer we're creating 
-for the message that will go to A.  Then we delete the authorizer.  We put the requirements 
-for what we want in ``req.keys``, and we put ``req`` into the buffer.  Then we return, and 
-the message gets sent.
+    It does not define a protocol, authentication, or security mechanism itself; it
+    instead makes it easier for application programmers to support multiple
+    authentication mechanisms by providing a uniform, generic API for security services.
+    It is a set of functions that include both an API and a methodology for approaching
+    authentication, aiming to insulate application protocols from the specifics of
+    security protocols as much as possible.
 
-The authorizer A receives this message which is of type ``CEPHX_GET_PRINCIPAL_SESSION_KEY``.
-The message gets handled in ``prep_auth()``, in ``mon/AuthMonitor.cc``, which again calls 
-``handle_request()`` in ``CephxServiceHandler.cc`` to do most of the work.  
+    *Microsoft Windows Kerberos* implementation does not include GSSAPI support but
+    instead includes a *Microsoft-specific API*, the *Security Support Provider
+    Interface (SSPI)*. In Windows, an SSPI client can communicate with a *GSSAPI server*.
 
-In this case, ``handle_request()`` will take the ``CEPHX_GET_PRINCIPAL_SESSION_KEY`` case. 
-It will call ``cephx_verify_authorizer()`` in ``CephxProtocol.cc``.  Here, we will grab 
-a bunch of data out of the input buffer, including the global and service IDs and the ticket 
-for A.   The ticket contains a ``secret_id``, indicating which key is being used for it.     
-If the secret ID pulled out of the ticket was -1, the ticket does not specify which secret 
-key A should use.  In this case, A should use the key for the specific entity that C wants
-to contact, rather than a rotating key shared by all server entities of the same type.
-To get that key, A must consult the key repository to find the right key.   Otherwise, 
-there's already a structure obtained from the key repository to hold the necessary secret.  
-Server secrets rotate on a time expiration basis (key rotation is not covered in this
-document), so run through that structure to find its current secret.  Either way, A now 
-knows the secret key used to create this ticket.  Now decrypt the encrypted part of the 
-ticket, using this key.  It should be a ticket for A.  
+    *Most applications that support GSSAPI also support Kerberos v5.*
 
-The ticket also contains a session key that C should have used to encrypt other parts of 
-this message.  Use that session key to decrypt the rest of the message.  
 
-Create a ``CephXAuthorizeReply`` to hold our reply.  Extract the nonce (which was in the stuff 
-we just decrypted), add 1 to it, and put the result in the reply.  Encrypt the reply and 
-put it in the buffer provided in the call to ``cephx_verify_authorizer()`` and return 
-to ``handle_request()``.  This will be used to prove to C that A (rather than an attacker) 
-created this response.
+Simple and Protected GSSAPI Negotiation Mechanism (SPNEGO)
+    As we can see, GSSAPI solves the problem of providing a single API to different
+    authentication mechanisms. However, it does not solve the problem of negotiating
+    which mechanism to use. In fact for GSSAPI to work, the two applications
+    communicating with each other must know in advance what authentication mechanism they
+    plan to use, which usually is not a problem if only one mechanism is supported
+    (meaning Kerberos v5).
 
-Having verified that the message is valid and from C, now we need to build it a ticket for S.
-We need to know what S it wants to communicate with and what services it wants.  Pull the
-ticket request that describes those things out of its message.  Now run through the ticket
-request to see what it wanted.  (He could potentially be asking for multiple different
-services in the same request, but we will assume it's just one, for this discussion.)  Once we 
-know which service ID it's after, call ``build_session_auth_info()``.
+    However, if there are multiple mechanisms to choose from, a method is needed to
+    securely negotiate an authentication mechanism that is mutually supported between
+    both client and server; which is where *SPNEGO (RFC 2478, 4178)* makes a difference.
 
-``build_session_auth_info()`` is in ``CephxKeyServer.cc``.  It checks to see if the 
-secret for the ``service_ID`` of S is available and puts it into the subfield of one of 
-the parameters, and calls the similarly named ``_build_session_auth_info()``, located in 
-the same file.      This routine loads up the new ``auth_info`` structure with the 
-ID of S, a ticket, and some timestamps for that ticket.  It generates a new session key 
-and puts it in the structure.   It then calls ``get_caps()`` to fill in the 
-``info.ticket`` caps field.  ``get_caps()`` is also in ``CephxKeyServer.cc``.  It fills the 
-``caps_info`` structure it is provided with caps for S allowed to C.
+    *SPNEGO* provides a framework for two parties that are engaged in authentication to
+    select from a set of possible authentication mechanisms, in a manner that preserves
+    the opaque nature of the security protocols to the application protocol that uses it.
+    It is a security protocol that uses a *GSSAPI authentication mechanism* and
+    negotiates among several available authentication mechanisms in an implementation,
+    selecting one for use to satisfy the authentication needs of the application protocol.
+    It is a *meta protocol* that travels entirely in other application protocols; it is
+    never used directly without an application protocol.
 
-Once ``build_session_auth_info()`` returns, A has a list of the capabilities allowed to 
-C for S.  We put a validity period based on the current TTL for this context into the info 
-structure, and put it into the ``info_vec`` structure we are preparing in response to the 
-message.  
 
-Now call ``build_cephx_response_header()``, also in ``CephxServiceHandler.cc``.   Fill in 
-the ``request_type``, which is ``CEPHX_GET_PRINCIPAL_SESSION_KEY``, a status of 0, 
-and the result buffer.  
+Why is this important and why do we care? Like, at all?
+    Having this background information in mind, we can easily describe things like:
+        1. *Ceph Kerberos authentication* is based totally on MIT *Kerberos*
+        implementation using *GSSAPI*.
 
-Now call ``cephx_build_service_ticket_reply()``, which is in ``CephxProtocol.cc``.  The 
-same routine was used towards the end of A's handling of its response in phase I.  Here, 
-the session key (now a session key to talk to S, not A) and the validity period for that 
-key will be encrypted with the existing session key shared between C and A.  
-The ``should_encrypt_ticket`` parameter is false here, and no key is provided for that 
-encryption.  The ticket in question, destined for S once C sends it there, is already 
-encrypted with S's secret.  So, essentially, this routine will put ID information, 
-the encrypted session key, and the ticket allowing C to talk to S into the buffer to 
-be sent to C.
+        2. At the moment we are still using *Kerberos default backend database*, however
+        we plan on adding LDAP as a backend which would provide us with *authentication
+        with GSSAPI (KRB5)* and *authorization with LDAP (LDAPv3)*, via *SASL mechanism*.
 
-After this routine returns, we exit from ``handle_request()``, going back to ``prep_auth()`` 
-and ultimately to the underlying message send code.  
 
-The client receives this message. The nonce is checked as the message passes through
-``Pipe::connect()``, which is in ``msg/SimpleMessager.cc``.  In a lengthy ``while(1)`` loop in
-the middle of this routine, it gets an authorizer.  If the get was successful, eventually
-it will call ``verify_reply()``, which checks the nonce.  ``connect()`` never explicitly
-checks to see if it got an authorizer, which would suggest that failure to provide an
-authorizer would allow an attacker to skip checking of the nonce.  However, in many places,
-if there is no authorizer, important connection fields will get set to zero, which will
-ultimately cause the connection to fail to provide data.  It would be worth testing, but
-it looks like failure to provide an authorizer, which contains the nonce, would not be helpful
-to an attacker.
 
-The message eventually makes its way through to ``handle_response()``, in 
-``CephxClientHandler.cc``.    In this routine, we call ``get_handler()`` to get a ticket 
-handler to hold the ticket we have just received.  This routine is embedded in the definition 
-for a ``CephXTicketManager`` structure.  It takes a type (``CEPH_ENTITY_TYPE_AUTH``, in 
-this case) and looks through the ``tickets_map`` to find that type.  There should be one, and 
-it should have the session key of the session between C and A in its entry.  This key will 
-be used to decrypt the information provided by A, particularly the new session key allowing 
-C to talk to S.
+Before We Start
+-----------------
 
-We then call ``verify_service_ticket_reply()``, in ``CephxProtocol.cc``.  This routine 
-needs to determine if the ticket is OK and also obtain the session key associated with this 
-ticket.  It decrypts the encrypted portion of the message buffer, using the session key 
-shared with A.  This ticket was not encrypted (well, not twice - tickets are always encrypted, 
-but sometimes double encrypted, which this one isn't).  So it can be stored in a service 
-ticket buffer directly.  We now grab the ticket out of that buffer.  
+We assume the environment already has some external services up and running properly:
+    - Kerberos needs to be properly configured, which also means (for both every server and KDC):
+        + Time Synchronization (either using `NTP <http://www.ntp.org/>`_  or `chrony <https://chrony.tuxfamily.org/>`_).
+            * Not only Kerberos, but also Ceph depends and relies on time synchronization.
+        + DNS resolution
+            * Both *(forward and reverse)* zones, with *fully qualified domain name (fqdn)*
+            ``(hostname + domain.name)``
 
-The stuff we decrypted with the session key shared between C and A included the new session 
-key.  That's our current session key for this ticket, so set it.  Check validity and 
-set the expiration times.  Now return true, if we got this far.  
+            * KDC discover can be set up to to use DNS ``(srv resources)`` as service location
+            protocol *(RFCs 2052, 2782)*, as well as *host or domain* to the *appropriate realm*
+            ``(txt record)``.
 
-Back in ``handle_response()``, we now call ``validate_tickets()`` to adjust what we think 
-we need, since we now have a ticket we didn't have before.  If we've taken care of 
-everything we need, we'll return 0.
+            * Even though these DNS entries/settings are not required to run a
+            ``Kerberos realm``, they certainly help to eliminate the need for manual
+            configuration on all clients.
 
-This ends phase II of the protocol.  We have now successfully set up a ticket and session key 
-for client C to talk to server S.  S will know that C is who it claims to be, since A will
-verify it.  C will know it is S it's talking to, again because A verified it.  The only
-copies of the session key for C and S to communicate were sent encrypted under the permanent
-keys of C and S, respectively, so no other party (excepting A, who is trusted by all) knows
-that session key.  The ticket will securely indicate to S what C is allowed to do, attested 
-to by A.  The nonces passed back and forth between A and C ensure that they have not been 
-subject to a replay attack.  C has not yet actually talked to S, but it is ready to.
+            * This is extremely important, once most of the Kerberos issues are usually
+            related to name resolution. Kerberos is very picky when checking on systems
+            names and host lookups.
 
-Much of the security here falls apart if one of the permanent keys is compromised.  Compromise
-of C's key means that the attacker can pose as C and obtain all of C's privileges, and can
-eavesdrop on C's legitimate conversations.  He can also pretend to be A, but only in 
-conversations with C.  Since it does not (by hypothesis) have keys for any services, he
-cannot generate any new tickets for services, though it can replay old tickets and session
-keys until S's permanent key is changed or the old tickets time out. 
+    - Whenever possible, in order to avoid a *single point of failure*, set up a *backup,
+      secondary, or slave*, for every piece/part in the infrastructure ``(ntp, dns, and kdc
+      servers)``.
 
-Compromise of S's key means that the attacker can pose as S to anyone, and can eavesdrop on 
-any user's conversation with S.  Unless some client's key is also compromised, the attacker
-cannot generate new fake client tickets for S, since doing so requires it to authenticate
-himself as A, using the client key it doesn't know.
+Also, the following *Kerberos terminology* is important:
+    - Ticket
+        + Tickets or Credentials, are a set of information that can be used to verify the
+        client's identity. Kerberos tickets may be stored in a file, or they may exist
+        only in memory.
+
+        + The first ticket obtained is a ticket-granting ticket (TGT), which allows the
+        clients to obtain additional tickets. These additional tickets give the client
+        permission for specific services. The requesting and granting of these additional
+        tickets happens transparently.
+
+            * The TGT, which expires at a specified time, permits the client to obtain
+            additional tickets, which give permission for specific services. The
+            requesting and granting of these additional tickets is user-transparent.
+
+    - Key Distribution Center (KDC).
+        + The KDC creates a ticket-granting ticket (TGT) for the client, encrypts it
+        using the client's password as the key, and sends the encrypted TGT back to the
+        client. The client then attempts to decrypt the TGT, using its password. If the
+        client successfully decrypts the TGT (i.e., if the client gave the correct
+        password), it keeps the decrypted TGT, which indicates proof of the client's
+        identity.
+
+        + The KDC is comprised of three components:
+            * Kerberos database, which stores all the information about the principals
+              and the realm they belong to, among other things
+            * Authentication service (AS)
+            * Ticket-granting service (TGS)
+
+    - Client
+        + Either a *user, host or a service* who sends a request for a ticket.
+
+    - Principal
+        + It is a unique identity to which Kerberos can assign tickets. Principals can
+        have an arbitrary number of components. Each component is separated by a
+        component separator, generally ``/``. The last component is the *realm*,
+        separated from the rest of the principal by the realm separator, generally ``@``.
+        If there is no realm component in the principal, then it will be assumed that
+        the principal is in the default realm for the context in which it is being used.
+
+        + Usually, a principal is divided into three parts:
+            * the ``primary``, the ``instance``, and the ``realm``
+
+            * The format of a typical Kerberos V5 principal is ``primary/instance@REALM``.
+
+            * The ``primary`` is the first part of the principal. In the case of a user,
+            it's the same as the ``username``. For a host, the primary is the word ``host``.
+            For Ceph, will use ``ceph`` as a primary name which makes it easier to organize
+            and identify Ceph related principals.
+
+            * The ``instance`` is an optional string that qualifies the primary. The instance
+            is separated from the primary by a slash ``/``. In the case of a user, the
+            instance is usually ``null``, but a user might also have an additional principal,
+            with an instance called ``admin``, which he/she uses to administrate a database.
+            The principal ``sage@MYDOMAIN.COM`` is completely separate from the principal
+            ``sage/admin@MYDOMAIN.COM``, with a separate password, and separate permissions.
+            In the case of a host, the instance is the fully qualified hostname,
+            i.e., ``osd1.MYDOMAIN.COM``.
+
+            * The ``realm`` is the Kerberos realm. Usually, the Kerberos realm is the domain
+            name, in *upper-case letters*. For example, the machine ``osd1.MYDOMAIN.COM``
+            would be in the realm ``MYDOMAIN.COM``.
+
+    - Keytab
+        + A keytab file stores the actual encryption key that can be used in lieu of a
+        password challenge for a given principal. Creating keytab files are useful for
+        noninteractive principals, such as *Service Principal Names*, which are often
+        associated with long-running processes like Ceph daemons. A keytab file does not
+        have to be a "1:1 mapping" to a single principal. Multiple different principal keys
+        can be stored in a single keytab file.
+
+            * The keytab file allows a user/service to authenticate without knowledge of
+            the password. Due to this, *keytabs should be protected* with appropriate
+            controls to prevent unauthorized users from authenticating with it.
+
+            * The default client keytab file is ``/etc/krb5.keytab``
+
+
+The 'Ceph side' of the things
+------------------------------
+
+In order to configure connections (from Ceph nodes) to the KDC:
+
+1. Login to the Kerberos client (Ceph server nodes) and confirm it is properly configured,
+by checking and editing ``/etc/krb5.conf`` file properly.
+::
+    /etc/krb5.conf
+    [libdefaults]
+        dns_canonicalize_hostname = false
+        rdns = false
+        forwardable = true
+        dns_lookup_realm = true
+        dns_lookup_kdc = true
+        allow_weak_crypto = false
+        default_realm = MYDOMAIN.COM
+        default_ccache_name = KEYRING:persistent:%{uid}
+    [realms]
+        MYDOMAIN.COM = {
+            kdc = kerberos.mydomain.com
+            admin_server = kerberos.mydomain.com
+            ...
+        }
+    ...
+::
+
+2. Login to the *KDC Server* and confirm it is properly configured to authenticate to the
+Kerberos realm in question.
+    a. Kerberos related DNS RRs:
+    ::
+        /var/lib/named/master/mydomain.com
+        kerberos                IN A        192.168.10.21
+        kerberos-slave          IN A        192.168.10.22
+        _kerberos               IN TXT      "MYDOMAIN.COM"
+        _kerberos._udp          IN SRV      1 0 88 kerberos
+        _kerberos._tcp          IN SRV      1 0 88 kerberos
+        _kerberos._udp          IN SRV      20 0 88 kerberos-slave
+        _kerberos-master._udp   IN SRV      0 0 88 kerberos
+        _kerberos-adm._tcp      IN SRV      0 0 749 kerberos
+        _kpasswd._udp           IN SRV      0 0 464 kerberos
+    ::
+
+    b. KDC configuration file:
+    ::
+        /var/lib/kerberos/krb5kdc/kdc.conf
+        [kdcdefaults]
+                kdc_ports = 750,88
+        [realms]
+                MYDOMAIN.COM = {
+                    acl_file = /var/lib/kerberos/krb5kdc/kadm5.acl
+                    admin_keytab = FILE:/var/lib/kerberos/krb5kdc/kadm5.keytab
+                    default_principal_flags = +postdateable +forwardable +renewable +proxiable
+                                                            +dup-skey -preauth -hwauth +service
+                                                            +tgt-based +allow-tickets -pwchange
+                                                            -pwservice
+                    dict_file = /var/lib/kerberos/krb5kdc/kadm5.dict
+                    key_stash_file = /var/lib/kerberos/krb5kdc/.k5.MYDOMAIN.COM
+                    kdc_ports = 750,88
+                    max_life = 0d 10h 0m 0s
+                    max_renewable_life = 7d 0h 0m 0s
+                }
+    ::
+
+3. Still on the KDC Server, run the Kerberos administration utility; ``kadmin.local``
+so we can list all the principals already created.
+::
+    kadmin.local:  listprincs
+    K/M@MYDOMAIN.COM
+    krbtgt/MYDOMAIN.COM@MYDOMAIN.COM
+    kadmin/admin@MYDOMAIN.COM
+    kadmin/changepw@MYDOMAIN.COM
+    kadmin/history@MYDOMAIN.COM
+    kadmin/kerberos.mydomain.com@MYDOMAIN.COM
+    root/admin@MYDOMAIN.COM
+::
+
+4. Add a *principal for each Ceph cluster node* we want to be authenticated by Kerberos.
+::
+    kadmin.local:  addprinc -randkey ceph/ceph-mon1
+    Principal "ceph/ceph-mon1@MYDOMAIN.COM" created.
+    kadmin.local:  addprinc -randkey ceph/ceph-osd1
+    Principal "ceph/ceph-osd1@MYDOMAIN.COM" created.
+    kadmin.local:  addprinc -randkey ceph/ceph-osd2
+    Principal "ceph/ceph-osd2@MYDOMAIN.COM" created.
+    kadmin.local:  addprinc -randkey ceph/ceph-osd3
+    Principal "ceph/ceph-osd3@MYDOMAIN.COM" created.
+    kadmin.local:  addprinc -randkey ceph/ceph-osd4
+    Principal "ceph/ceph-osd4@MYDOMAIN.COM" created.
+    kadmin.local:  listprincs
+    K/M@MYDOMAIN.COM
+    krbtgt/MYDOMAIN.COM@MYDOMAIN.COM
+    kadmin/admin@MYDOMAIN.COM
+    kadmin/changepw@MYDOMAIN.COM
+    kadmin/history@MYDOMAIN.COM
+    kadmin/kerberos.mydomain.com@MYDOMAIN.COM
+    root/admin@MYDOMAIN.COM
+    ceph/ceph-mon1@MYDOMAIN.COM
+    ceph/ceph-osd1@MYDOMAIN.COM
+    ceph/ceph-osd2@MYDOMAIN.COM
+    ceph/ceph-osd3@MYDOMAIN.COM
+    ceph/ceph-osd4@MYDOMAIN.COM
+    ...
+::
+
+    a. This follows the same idea if we are creating a *user principal*
+    ::
+        kadmin.local:  addprinc sage
+        WARNING: no policy specified for sage@MYDOMAIN.COM; defaulting to no policy
+        Enter password for principal "sage@MYDOMAIN.COM":
+        Re-enter password for principal "sage@MYDOMAIN.COM":
+        Principal "sage@MYDOMAIN.COM" created.
+    ::
+
+5. Create a *keytab file* for each Ceph cluster node:
+
+    As the default client keytab file is ``/etc/krb5.keytab``, we will want to use a different
+    file name, so we especify which *keytab file to create* and which *principal to export keys* from:
+    ::
+        kadmin.local:  ktadd -k /etc/gss_client_mon1.ktab ceph/ceph-mon1
+        Entry for principal ceph/ceph-mon1 with kvno 2, encryption type aes256-cts-hmac-sha1-96 added to keytab WRFILE:/etc/gss_client_mon1.ktab.
+        Entry for principal ceph/ceph-mon1 with kvno 2, encryption type aes128-cts-hmac-sha1-96 added to keytab WRFILE:/etc/gss_client_mon1.ktab.
+        Entry for principal ceph/ceph-mon1 with kvno 2, encryption type des3-cbc-sha1 added to keytab WRFILE:/etc/gss_client_mon1.ktab.
+        Entry for principal ceph/ceph-mon1 with kvno 2, encryption type arcfour-hmac added to keytab WRFILE:/etc/gss_client_mon1.ktab.
+        kadmin.local:  ktadd -k /etc/gss_client_osd1.ktab ceph/ceph-osd1
+        Entry for principal ceph/ceph-osd1 with kvno 2, encryption type aes256-cts-hmac-sha1-96 added to keytab WRFILE:/etc/gss_client_osd1.ktab.
+        Entry for principal ceph/ceph-osd1 with kvno 2, encryption type aes128-cts-hmac-sha1-96 added to keytab WRFILE:/etc/gss_client_osd1.ktab.
+        Entry for principal ceph/ceph-osd1 with kvno 2, encryption type des3-cbc-sha1 added to keytab WRFILE:/etc/gss_client_osd1.ktab.
+        Entry for principal ceph/ceph-osd1 with kvno 2, encryption type arcfour-hmac added to keytab WRFILE:/etc/gss_client_osd1.ktab.
+        kadmin.local:  ktadd -k /etc/gss_client_osd2.ktab ceph/ceph-osd2
+        Entry for principal ceph/ceph-osd2 with kvno 2, encryption type aes256-cts-hmac-sha1-96 added to keytab WRFILE:/etc/gss_client_osd2.ktab.
+        Entry for principal ceph/ceph-osd2 with kvno 2, encryption type aes128-cts-hmac-sha1-96 added to keytab WRFILE:/etc/gss_client_osd2.ktab.
+        Entry for principal ceph/ceph-osd2 with kvno 2, encryption type des3-cbc-sha1 added to keytab WRFILE:/etc/gss_client_osd2.ktab.
+        Entry for principal ceph/ceph-osd2 with kvno 2, encryption type arcfour-hmac added to keytab WRFILE:/etc/gss_client_osd2.ktab.
+        kadmin.local:  ktadd -k /etc/gss_client_osd3.ktab ceph/ceph-osd3
+        Entry for principal ceph/ceph-osd3 with kvno 3, encryption type aes256-cts-hmac-sha1-96 added to keytab WRFILE:/etc/gss_client_osd3.ktab.
+        Entry for principal ceph/ceph-osd3 with kvno 3, encryption type aes128-cts-hmac-sha1-96 added to keytab WRFILE:/etc/gss_client_osd3.ktab.
+        Entry for principal ceph/ceph-osd3 with kvno 3, encryption type des3-cbc-sha1 added to keytab WRFILE:/etc/gss_client_osd3.ktab.
+        Entry for principal ceph/ceph-osd3 with kvno 3, encryption type arcfour-hmac added to keytab WRFILE:/etc/gss_client_osd3.ktab.
+        kadmin.local:  ktadd -k /etc/gss_client_osd4.ktab ceph/ceph-osd4
+        Entry for principal ceph/ceph-osd4 with kvno 4, encryption type aes256-cts-hmac-sha1-96 added to keytab WRFILE:/etc/gss_client_osd4.ktab.
+        Entry for principal ceph/ceph-osd4 with kvno 4, encryption type aes128-cts-hmac-sha1-96 added to keytab WRFILE:/etc/gss_client_osd4.ktab.
+        Entry for principal ceph/ceph-osd4 with kvno 4, encryption type des3-cbc-sha1 added to keytab WRFILE:/etc/gss_client_osd4.ktab.
+        Entry for principal ceph/ceph-osd4 with kvno 4, encryption type arcfour-hmac added to keytab WRFILE:/etc/gss_client_osd4.ktab.
+
+        # ls -1 /etc/gss_client_*
+        /etc/gss_client_mon1.ktab
+        /etc/gss_client_osd1.ktab
+        /etc/gss_client_osd2.ktab
+        /etc/gss_client_osd3.ktab
+        /etc/gss_client_osd4.ktab
+    ::
+
+    We can also check these newly created keytab client files by:
+    ::
+        # klist -kte /etc/gss_client_mon1.ktab
+        Keytab name: FILE:/etc/gss_client_mon1.ktab
+        KVNO Timestamp           Principal
+        ---- ------------------- ------------------------------------------------------
+           2 10/8/2018 14:35:30 ceph/ceph-mon1@MYDOMAIN.COM (aes256-cts-hmac-sha1-96)
+           2 10/8/2018 14:35:31 ceph/ceph-mon1@MYDOMAIN.COM (aes128-cts-hmac-sha1-96)
+           2 10/8/2018 14:35:31 ceph/ceph-mon1@MYDOMAIN.COM (des3-cbc-sha1)
+           2 10/8/2018 14:35:31 ceph/ceph-mon1@MYDOMAIN.COM (arcfour-hmac)
+    ::
+
+6. A new *set parameter* was added in Ceph, ``gss ktab client file`` which points to the
+keytab file related to the Ceph node *(or principal)* in question.
+    By default it points to ``/var/lib/ceph/$name/gss_client_$name.ktab``. So, in the case
+    of a Ceph server ``osd1.mydomain.com``, the location and name of the keytab file should be:
+    ``/var/lib/ceph/osd1/gss_client_osd1.ktab``
+
+    Therefore, we need to ``scp`` each of these newly created keytab files from the KDC to
+    their respective Ceph cluster nodes (i.e):
+    ``# for node in mon1 osd1 osd2 osd3 osd4; do scp /etc/gss_client_$node*.ktab root@ceph-$node:/var/lib/ceph/$node/; done``
+
+    Or whatever other way one feels comfortable with, as long as each keytab client file
+    gets copied over to the proper location.
+
+    At this point, even *without using any keytab client file* we should be already able to
+    authenticate a *user principal*:
+    ::
+        # kdestroy -A && kinit -f sage && klist -f
+        Password for sage@MYDOMAIN.COM:
+        Ticket cache: KEYRING:persistent:0:0
+        Default principal: sage@MYDOMAIN.COM
+
+        Valid starting       Expires              Service principal
+        10/10/2018 15:32:01  10/11/2018 07:32:01  krbtgt/MYDOMAIN.COM@MYDOMAIN.COM
+            renew until 10/11/2018 15:32:01, Flags: FRI
+    ::
+
+    Given that the *keytab client file* is/should already be copied and available at the
+    Kerberos client (Ceph cluster node), we should be able to athenticate using it before
+    going forward:
+    ::
+        # kdestroy -A && kinit -k -t /etc/gss_client_mon1.ktab-f 'ceph/ceph-mon1@MYDOMAIN.COM' && klist -f
+        Ticket cache: KEYRING:persistent:0:0
+        Default principal: ceph/ceph-mon1@MYDOMAIN.COM
+
+        Valid starting       Expires              Service principal
+        10/10/2018 15:54:25  10/11/2018 07:54:25  krbtgt/MYDOMAIN.COM@MYDOMAIN.COM
+            renew until 10/11/2018 15:54:25, Flags: FRI
+    ::
+
+
+7. The default client keytab is used, if it is present and readable, to automatically
+obtain initial credentials for GSSAPI client applications. The principal name of the
+first entry in the client keytab is used by default when obtaining initial credentials.
+    a. The ``KRB5_CLIENT_KTNAME environment`` variable.
+    b. The ``default_client_keytab_name`` profile variable in ``[libdefaults]``.
+    c. The hardcoded default, ``DEFCKTNAME``.
+
+    So, what we do is to internally, set the environment variable ``KRB5_CLIENT_KTNAME`` to
+    the same location as ``gss_ktab_client_file``, so ``/var/lib/ceph/osd1/gss_client_osd1.ktab``,
+    and change the ``ceph.conf`` file to add the new authentication method.
+    ::
+        /etc/ceph/ceph.conf
+        [global]
+            ...
+            auth cluster required = gss
+            auth service required = gss
+            auth client required = gss
+            gss ktab client file = /{$my_new_location}/{$my_new_ktab_client_file.keytab}
+            ...
+    ::
+
+
+8. With that the GSSAPIs will then be able to read the keytab file and using the process
+of name and service resolution *(provided by the DNS)*, able to request a *TGT*
+as follows:
+
+    a. User/Client sends principal identity and credentials to the KDC Server (TGT request).
+    b. KDC checks its internal database for the principal in question.
+    c. a TGT is created and wrapped by the KDC, using the principal's key (TGT + Key).
+    d. The newly created TGT, is decrypted and stored in the credentials cache.
+    e. At this point, Kerberos/GSSAPI aware applications (and/or services) are able to
+    check the list of active TGT in the keytab file.
+

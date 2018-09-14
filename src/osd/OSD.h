@@ -1260,7 +1260,7 @@ class OSD : public Dispatcher,
   // Tick timer for those stuff that do not need osd_lock
   Mutex tick_timer_lock;
   SafeTimer tick_timer_without_osd_lock;
-  std::string krb_ktfile_client;
+  std::string gss_ktfile_client{};
 
 public:
   // config observer bits

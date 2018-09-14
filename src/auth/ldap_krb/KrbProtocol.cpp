@@ -12,17 +12,6 @@
  *
  */
 
-/* Include order and names:
- * a) Immediate related header
- * b) C libraries (if any),
- * c) C++ libraries,
- * d) Other support libraries
- * e) Other project's support libraries
- *
- * Within each section the includes should
- * be ordered alphabetically.
- */
-
 #include "KrbProtocol.hpp"
 
 #include "common/Clock.h"
@@ -48,7 +37,7 @@ std::string gss_auth_show_status(const OM_uint32 gss_major_status,
 
   std::string str_status("");
 
-  const auto gss_complete_status_str_format = [&] (const uint32_t gss_status) {
+  const auto gss_complete_status_str_format = [&](const uint32_t gss_status) {
     if (gss_status == GSS_S_COMPLETE) {
       std::string str_tmp("");
       str_tmp.append(reinterpret_cast<char*>(gss_str_status.value), 
@@ -95,5 +84,4 @@ std::string gss_auth_show_status(const OM_uint32 gss_major_status,
   return str_status;
 }
 
-// ----------------------------- END-OF-FILE --------------------------------//
 

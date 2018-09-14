@@ -15,17 +15,6 @@
 #ifndef COMMON_UTILS_HPP
 #define COMMON_UTILS_HPP
 
-/* Include order and names:
- * a) Immediate related header
- * b) C libraries (if any),
- * c) C++ libraries,
- * d) Other support libraries
- * e) Other project's support libraries
- *
- * Within each section the includes should
- * be ordered alphabetically.
- */
-
 #include <sys/time.h>
 
 #include <atomic>
@@ -445,4 +434,4 @@ namespace threading {
 
 #endif    //-- COMMON_UTILS_HPP
 
-// ----------------------------- END-OF-FILE --------------------------------//
+

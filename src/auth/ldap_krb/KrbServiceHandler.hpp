@@ -15,17 +15,6 @@
 #ifndef KRB_SERVICE_HANDLER_HPP
 #define KRB_SERVICE_HANDLER_HPP
 
-/* Include order and names:
- * a) Immediate related header
- * b) C libraries (if any),
- * c) C++ libraries,
- * d) Other support libraries
- * e) Other project's support libraries
- *
- * Within each section the includes should
- * be ordered alphabetically.
- */
-
 #include "auth/AuthServiceHandler.h"
 #include "auth/Auth.h"
 #include "auth/cephx/CephxKeyServer.h"
@@ -46,8 +35,7 @@ class KrbServiceHandler : public AuthServiceHandler
     int handle_request(bufferlist::const_iterator&, 
                        bufferlist&, 
                        uint64_t&, 
-                       AuthCapsInfo&, 
-                       uint64_t* auid = nullptr) override;
+                       AuthCapsInfo&) override;
     int start_session(EntityName&, 
                       bufferlist::const_iterator&, 
                       bufferlist&, 
@@ -62,8 +50,6 @@ class KrbServiceHandler : public AuthServiceHandler
 
 };
 
-
 #endif    //-- KRB_SERVICE_HANDLER_HPP
 
-// ----------------------------- END-OF-FILE --------------------------------//
 

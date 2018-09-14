@@ -12,17 +12,6 @@
  *
  */
 
-/* Include order and names:
- * a) Immediate related header
- * b) C libraries (if any),
- * c) C++ libraries,
- * d) Other support libraries
- * e) Other project's support libraries
- *
- * Within each section the includes should
- * be ordered alphabetically.
- */
-
 #include "KrbClientHandler.hpp"
 
 #include <errno.h>
@@ -40,12 +29,10 @@
 struct AuthAuthorizer;
 
 template<LockPolicy lp> 
-AuthAuthorizer* KrbClientHandler<lp>::
-build_authorizer(uint32_t service_id) const 
+AuthAuthorizer* 
+KrbClientHandler<lp>::build_authorizer(uint32_t service_id) const 
 {
-  constexpr auto SUBSYSTEM_ID(20);
-
-  ldout(cct, SUBSYSTEM_ID) 
+  ldout(cct, 20) 
       << "KrbClientHandler::build_authorizer(): Service: " 
       << ceph_entity_type_name(service_id) << dendl; 
 
@@ -66,15 +53,14 @@ KrbClientHandler<lp>::~KrbClientHandler()
   gss_release_name(&gss_minor_status, &m_gss_service_name);
   gss_release_cred(&gss_minor_status, &m_gss_credentials); 
   gss_delete_sec_context(&gss_minor_status, &m_gss_sec_ctx, GSS_C_NO_BUFFER); 
-  gss_release_buffer(&gss_minor_status, static_cast<gss_buffer_t>(&m_gss_buffer_out)); 
+  gss_release_buffer(&gss_minor_status, 
+                     static_cast<gss_buffer_t>(&m_gss_buffer_out)); 
 }
 
 template<LockPolicy lp>
 int KrbClientHandler<lp>::build_request(bufferlist& buff_list) const
 {
-  constexpr auto SUBSYSTEM_ID(20);
-
-  ldout(cct, SUBSYSTEM_ID) 
+  ldout(cct, 20) 
       << "KrbClientHandler::build_request() " << dendl; 
 
   KrbTokenBlob krb_token; 
@@ -94,7 +80,7 @@ int KrbClientHandler<lp>::build_request(bufferlist& buff_list) const
                                       (m_gss_buffer_out.value)));
 
     encode(krb_token, buff_list);
-    ldout(cct, SUBSYSTEM_ID) 
+    ldout(cct, 20) 
         << "KrbClientHandler::build_request() : Token Blob: " << "\n"; 
     krb_token.m_token_blob.hexdump(*_dout);
     *_dout << dendl;
@@ -106,9 +92,6 @@ template<LockPolicy lp>
 int KrbClientHandler<lp>::handle_response(int ret, 
                                       bufferlist::const_iterator& buff_list)
 {
-  constexpr auto SUBSYSTEM_ID(20);
-  constexpr auto SUBSYSTEM_ZERO(0);
-
   auto result(ret);
   gss_buffer_desc gss_buffer_in; 
   gss_OID_set_desc gss_mechs_wanted;
@@ -118,7 +101,7 @@ int KrbClientHandler<lp>::handle_response(int ret,
                              GSS_C_INTEG_FLAG);
   OM_uint32 gss_result_flags(0);
 
-  ldout(cct, SUBSYSTEM_ID) 
+  ldout(cct, 20) 
       << "KrbClientHandler::handle_response() " << dendl; 
 
   if (result < 0) {
@@ -138,11 +121,8 @@ int KrbClientHandler<lp>::handle_response(int ret,
     std::string krb_client_name(cct->_conf->name.to_str());
 
     krb_client_name_buff.length = krb_client_name.length();
-    krb_client_name_buff.value  = /*reinterpret_cast<void*>*/
-                                    (const_cast<char*>(krb_client_name.c_str()));
-    /*  Defined in msgr.h
-       #define CEPH_ENTITY_TYPE_CLIENT 0x08
-    */
+    krb_client_name_buff.value  = (const_cast<char*>(krb_client_name.c_str()));
+
     if (cct->_conf->name.get_type() == CEPH_ENTITY_TYPE_CLIENT) {
       gss_major_status = gss_import_name(&gss_minor_status, 
                                          &gss_buffer_in, 
@@ -151,7 +131,7 @@ int KrbClientHandler<lp>::handle_response(int ret,
       if (gss_major_status != GSS_S_COMPLETE) {
         auto status_str(gss_auth_show_status(gss_major_status, 
                                              gss_minor_status));
-        ldout(cct, SUBSYSTEM_ZERO) 
+        ldout(cct, 0) 
             << "ERROR: KrbClientHandler::handle_response() "
                "[gss_import_name(gss_client_name)] failed! " 
             << gss_major_status << " " 
@@ -172,7 +152,7 @@ int KrbClientHandler<lp>::handle_response(int ret,
     if (gss_major_status != GSS_S_COMPLETE) {
       auto status_str(gss_auth_show_status(gss_major_status, 
                                            gss_minor_status));
-      ldout(cct, SUBSYSTEM_ZERO) 
+      ldout(cct, 20) 
           << "ERROR: KrbClientHandler::handle_response() "
              "[gss_acquire_cred()] failed! " 
           << gss_major_status << " " 
@@ -189,8 +169,8 @@ int KrbClientHandler<lp>::handle_response(int ret,
     gss_buffer_desc krb_input_name_buff;
     gss_OID krb_input_type = GSS_C_NT_HOSTBASED_SERVICE;
     krb_input_name_buff.length = gss_utils::GSS_TARGET_DEFAULT_NAME.length();
-    krb_input_name_buff.value  = /*reinterpret_cast<void*>*/
-                                    (const_cast<char*>(gss_utils::GSS_TARGET_DEFAULT_NAME.c_str()));
+    krb_input_name_buff.value  = (const_cast<char*>
+                                  (gss_utils::GSS_TARGET_DEFAULT_NAME.c_str()));
 
     gss_major_status = gss_import_name(&gss_minor_status, 
                                        &krb_input_name_buff, 
@@ -199,7 +179,7 @@ int KrbClientHandler<lp>::handle_response(int ret,
     if (gss_major_status != GSS_S_COMPLETE) {
       auto status_str(gss_auth_show_status(gss_major_status, 
                                            gss_minor_status));
-      ldout(cct, SUBSYSTEM_ZERO) 
+      ldout(cct, 0) 
           << "ERROR: KrbClientHandler::handle_response() "
              "[gss_import_name(gss_service_name)] failed! " 
           << gss_major_status << " " 
@@ -212,7 +192,7 @@ int KrbClientHandler<lp>::handle_response(int ret,
 
     using ceph::decode;
     decode(krb_token, buff_list);
-    ldout(cct, SUBSYSTEM_ID) 
+    ldout(cct, 20) 
         << "KrbClientHandler::handle_response() : Token Blob: " << "\n"; 
     krb_token.m_token_blob.hexdump(*_dout);
     *_dout << dendl;
@@ -242,14 +222,14 @@ int KrbClientHandler<lp>::handle_response(int ret,
                                           nullptr);
   switch (gss_major_status) {
     case GSS_S_CONTINUE_NEEDED: 
-      ldout(cct, SUBSYSTEM_ID) 
+      ldout(cct, 20) 
           << "KrbClientHandler::handle_response() : "
              "[gss_init_sec_context(GSS_S_CONTINUE_NEEDED)] " << dendl; 
       result = (-EAGAIN);
       break;
 
     case GSS_S_COMPLETE: 
-      ldout(cct, SUBSYSTEM_ID) 
+      ldout(cct, 20) 
           << "KrbClientHandler::handle_response() : "
              "[gss_init_sec_context(GSS_S_COMPLETE)] " << dendl; 
       result = 0;
@@ -258,7 +238,7 @@ int KrbClientHandler<lp>::handle_response(int ret,
     default: 
       auto status_str(gss_auth_show_status(gss_major_status, 
                                            gss_minor_status));
-      ldout(cct, SUBSYSTEM_ZERO) 
+      ldout(cct, 0) 
           << "ERROR: KrbClientHandler::handle_response() "
              "[gss_init_sec_context()] failed! " 
           << gss_major_status << " " 
@@ -275,5 +255,4 @@ int KrbClientHandler<lp>::handle_response(int ret,
 // explicitly instantiate only the classes we need
 template class KrbClientHandler<LockPolicy::MUTEX>;
 
-// ----------------------------- END-OF-FILE --------------------------------//
 

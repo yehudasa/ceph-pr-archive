@@ -723,9 +723,9 @@ TEST_P(MessengerTest, AuthTest) {
   ASSERT_EQ(1U, static_cast<Session*>(conn->get_priv().get())->get_count());
 
   // 3. krb / mix auth 
-  g_ceph_context->_conf.set_val("auth_cluster_required", "krb");
-  g_ceph_context->_conf.set_val("auth_service_required", "krb");
-  g_ceph_context->_conf.set_val("auth_client_required", "krb");
+  g_ceph_context->_conf.set_val("auth_cluster_required", "gss");
+  g_ceph_context->_conf.set_val("auth_service_required", "gss");
+  g_ceph_context->_conf.set_val("auth_client_required", "gss");
   conn->mark_down();
   ASSERT_FALSE(conn->is_connected());
   conn = client_msgr->connect_to(server_msgr->get_mytype(), 

@@ -15,16 +15,7 @@
 #ifndef KRB_CLIENT_HANDLER_HPP
 #define KRB_CLIENT_HANDLER_HPP
 
-/* Include order and names:
- * a) Immediate related header
- * b) C libraries (if any),
- * c) C++ libraries,
- * d) Other support libraries
- * e) Other project's support libraries
- *
- * Within each section the includes should
- * be ordered alphabetically.
- */
+#include <map>
 
 #include "auth/Auth.h"
 #include "auth/AuthClientHandler.h"
@@ -38,7 +29,9 @@
 class CephContext;
 class Keyring;
 
-template<LockPolicy lock_policy>
+using map_string_all_t = std::map<std::string, std::string>; 
+
+template<LockPolicy lock_policy> 
 class KrbClientHandler : public AuthClientHandler
 {
 
@@ -56,7 +49,7 @@ class KrbClientHandler : public AuthClientHandler
     }
     ~KrbClientHandler() override;
     
-    int get_protocol() const override { return CEPH_AUTH_KRB5; }
+    int get_protocol() const override { return CEPH_AUTH_GSS; }
     void reset() override
     {
       m_gss_client_name = GSS_C_NO_NAME; 
@@ -89,7 +82,54 @@ class KrbClientHandler : public AuthClientHandler
     void validate_tickets() override { } 
 };
 
+
+class CephGSSCCache 
+{
+  public: 
+    CephGSSCCache() = default;
+    ~CephGSSCCache() = default;
+    std::string m_filename{}; 
+    map_string_all_t m_environ_vars{};
+    void* m_data{nullptr};
+};
+
+class CephGSSMechanism 
+{
+  public: 
+    CephGSSMechanism() = default; 
+    ~CephGSSMechanism() = default;
+    std::string m_enc_name{};
+    std::string m_mech_name{};
+    gss_OID_desc m_gss_oid = {GSS_API_SPNEGO_OID_PTR}; 
+};
+
+class CephGSSClient 
+{
+  public: 
+    CephGSSClient() = default; 
+    ~CephGSSClient() = default;
+    gss_buffer_desc m_display_name = {0,0};
+    gss_buffer_desc m_export_name = {0,0};
+    gss_cred_id_t m_credentials = GSS_C_NO_CREDENTIAL;
+    CephGSSCCache m_store;
+    std::unique_ptr<CephGSSMechanism> m_gss_mech{nullptr};
+};
+
+class CephGSSContext
+{
+  public: 
+    CephGSSContext() = default;
+    ~CephGSSContext() = default;
+    OM_uint32 major_status{0};    /* Used by both */
+    OM_uint32 minor_status{0};    /* Used by both */
+    gss_ctx_id_t gss_context = {GSS_C_NO_CONTEXT};    /* Used by both */
+    gss_name_t gss_service_name = {GSS_C_NO_NAME};    /* Used by both */
+    gss_name_t gss_client_name = {GSS_C_NO_NAME};     /* Used by server */
+    gss_OID gss_client_type = {};     /* Used by client */ 
+    gss_cred_id_t m_client_credentials = GSS_C_NO_CREDENTIAL;     /* Used by server */
+};
+
+
 #endif    //-- KRB_CLIENT_HANDLER_HPP
 
-// ----------------------------- END-OF-FILE --------------------------------//
 

@@ -12,17 +12,6 @@
  *
  */
 
-/* Include order and names:
- * a) Immediate related header
- * b) C libraries (if any),
- * c) C++ libraries,
- * d) Other support libraries
- * e) Other project's support libraries
- *
- * Within each section the includes should
- * be ordered alphabetically.
- */
-
 #include <cstring>
 
 #include "gss_utils.hpp"
@@ -30,7 +19,8 @@
 #include "gss_auth_mechanism.hpp"
 
 
-namespace gss_utils {
+namespace gss_utils 
+{
 
 /*
  *  Mechanism Name          Object Identifier       Shared Library  Kernel Module
@@ -50,7 +40,8 @@ namespace gss_utils {
  *   The second, "1.2.3.4", is more widely used but is not an official
  *   standard format.
  */
-std::string transform_gss_oid(const std::string& oid_to_check) {
+std::string transform_gss_oid(const std::string& oid_to_check) 
+{
   if (!oid_to_check.empty()) {
     std::string new_gss_oid(common_utils::str_trim(oid_to_check));
     std::replace(std::begin(new_gss_oid),
@@ -143,6 +134,7 @@ void show_msg_helper(OM_uint32 gss_msg_code,
   gss_msg[(gss_size - 1)] = 0;
 }
 
+
 }   //-- namespace gss_utils
 
-// ----------------------------- END-OF-FILE --------------------------------//
+

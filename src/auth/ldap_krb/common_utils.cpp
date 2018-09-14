@@ -12,17 +12,6 @@
  *
  */
 
-/* Include order and names:
- * a) Immediate related header
- * b) C libraries (if any),
- * c) C++ libraries,
- * d) Other support libraries
- * e) Other project's support libraries
- *
- * Within each section the includes should
- * be ordered alphabetically.
- */
-
 #include "common_utils.hpp"
 
 #include <cstring>
@@ -49,48 +38,9 @@ std::string str_trim(const std::string& str_to_trim)
                                                           wsback));
 }
 
-/* C++17 proper conversion.
-CharT const * from std::basic_string<CharT>
-
-  std::string const cstr = { "..." };
-  char const * p = cstr.data(); // or .c_str()
-
-
-CharT * from std::basic_string<CharT>
-
-  std::string str = { "..." };
-  char * p = str.data();
-
-  //------
-  Given say...
-  std::string x = "hello";
-
-  Getting a `char *` or `const char*` from a `string`
-
-  How to get a character pointer that's valid while x remains in scope and isn't modified further
-
-  C++11 simplifies things; the following all give access to the same internal string buffer:
-
-  const char* p_c_str = x.c_str();
-  const char* p_data  = x.data();
-  const char* p_x0    = &x[0];
-
-  char* p_x0_rw = &x[0];  // compiles iff x is not const...
-  //------
-*/
-
 auto from_const_str_to_char(const std::string& str_to_convert)
 {
   return str_to_convert.c_str();
-
-  /* If we need a vector<char>
-  std::vector<char> writable_copy(str_to_convert.data(),
-                                  (str_to_convert.data() +
-                                   str_to_convert.size() + 1u));
-  // char* c = &writable_copy[0];
-  //or:  &*writable.begin()
-  return (writable_copy.data());
-   */
 }
 
 auto from_const_ptr_char_to_string(const char* str_to_convert)
@@ -166,4 +116,4 @@ from_timeval_to_chrono(const timeval& time_val)
 
 }   //-- namespace common_utils
 
-// ----------------------------- END-OF-FILE --------------------------------//
+

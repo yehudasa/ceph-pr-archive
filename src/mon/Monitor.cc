@@ -145,9 +145,10 @@ Monitor::Monitor(CephContext* cct_, string nm, MonitorDBStore *s,
 			cct->_conf->auth_cluster_required : cct->_conf->auth_supported),
   auth_service_required(cct,
 			cct->_conf->auth_supported.empty() ?
-			cct->_conf->auth_service_required : cct->_conf->auth_supported ),
+			cct->_conf->auth_service_required : cct->_conf->auth_supported),
   mgr_messenger(mgr_m),
   mgr_client(cct_, mgr_m),
+  gss_ktfile_client(cct->_conf.get_val<std::string>("gss_ktab_client_file")),
   store(s),
   
   state(STATE_PROBING),
@@ -184,13 +185,20 @@ Monitor::Monitor(CephContext* cct_, string nm, MonitorDBStore *s,
 
   update_log_clients();
 
-  if (!krb_ktfile_client.empty()) {
+  if (!gss_ktfile_client.empty()) {
     // Assert we can export environment variable 
     assert(
-        setenv("KRB5_CLIENT_KTNAME", krb_ktfile_client.c_str(), 1) != 0
+        /* 
+            The default client keytab is used, if it is present and readable,
+            to automatically obtain initial credentials for GSSAPI client
+            applications. The principal name of the first entry in the client
+            keytab is used by default when obtaining initial credentials.
+          	1. The KRB5_CLIENT_KTNAME environment variable.
+          	2. The default_client_keytab_name profile variable in [libdefaults].
+          	3. The hardcoded default, DEFCKTNAME.
+        */
+        setenv("KRB5_CLIENT_KTNAME", gss_ktfile_client.c_str(), 1) != 0
     );
-    //auto result(setenv("KRB5_CLIENT_KTNAME", krb_ktfile_client.c_str(), 1));
-    //assert(!result);
   }
 
   op_tracker.set_complaint_and_threshold(
@@ -2904,8 +2912,8 @@ bool Monitor::is_keyring_required()
 
   return auth_service_required == "cephx" || 
          auth_cluster_required == "cephx" || 
-         auth_service_required == "krb"   || 
-         auth_cluster_required == "krb";
+         auth_service_required == "gss"   || 
+         auth_cluster_required == "gss";
 }
 
 struct C_MgrProxyCommand : public Context {

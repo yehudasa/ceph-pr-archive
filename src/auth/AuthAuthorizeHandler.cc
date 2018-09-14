@@ -37,7 +37,7 @@ AuthAuthorizeHandler *AuthAuthorizeHandlerRegistry::get_handler(int protocol)
     m_authorizers[protocol] = new CephxAuthorizeHandler();
     return m_authorizers[protocol];
 
-  case CEPH_AUTH_KRB5:
+  case CEPH_AUTH_GSS:
     m_authorizers[protocol] = new KrbAuthorizeHandler();
     return m_authorizers[protocol];
   }

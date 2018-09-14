@@ -15,22 +15,12 @@
 #ifndef GSS_UTILS_HPP
 #define GSS_UTILS_HPP
 
-/* Include order and names:
- * a) Immediate related header
- * b) C libraries (if any),
- * c) C++ libraries,
- * d) Other support libraries
- * e) Other project's support libraries
- *
- * Within each section the includes should
- * be ordered alphabetically.
- */
-
 #include <gssapi.h>
 #include <gssapi/gssapi_generic.h>
 #include <gssapi/gssapi_krb5.h>
 #include <gssapi/gssapi_ext.h>
 
+#include <map>
 #include <string>
 
 #include "common_utils.hpp"
@@ -52,7 +42,8 @@ static const gss_OID_desc GSS_API_KRB5_OID_PTR =
 static const gss_OID_desc GSS_API_SPNEGO_OID_PTR =
     {6, (void *)"\x2b\x06\x01\x05\x05\x02"};
 
-namespace gss_utils {
+namespace gss_utils 
+{
 
 /// Common GSS constants used.
 static constexpr int32_t GSS_AUTH_OK(0);
@@ -60,16 +51,38 @@ static constexpr int32_t GSS_AUTH_FAILED(-1);
 static constexpr uint32_t GSS_MAX_BUFF_MSG_SIZE(128);
 static constexpr uint32_t GSS_MAX_FUNC_SIZE(64);
 static constexpr u_short KRB_DEFAULT_PORT_NUM(88);
+static constexpr uint32_t GSS_PRINCIPAL_NAME_MAX_SIZE(256); 
+static constexpr uint32_t GSS_MECH_NAME_MAX_SIZE(30);
+
 static const std::string KRB_DEFAULT_PORT_STR(std::to_string(KRB_DEFAULT_PORT_NUM));
-static const std::string KRB_SERVICE_NAME("kerberos");
+static const std::string KRB_SERVICE_NAME("kerberos/gssapi");
 static const std::string GSS_API_SPNEGO_OID("{1.3.6.1.5.5.2}");
 static const std::string GSS_API_KRB5_OID("{1.2.840.113554.1.2.2}");
 static const std::string GSS_TARGET_DEFAULT_NAME("ceph"); 
 
-///
 std::string transform_gss_oid(const std::string&);
-
 void show_msg_helper(OM_uint32, int, char*, int);
+
+
+// Possible/supported methods
+enum class AuthenticationMethods 
+{
+  NONE,
+  LDAP,
+  GSSAPI,
+  LDAP_LDAP,
+  GSSAPI_GSSAPI,
+  LDAP_GSSAPI,
+};
+
+enum class AuthExclusiveOptions 
+{
+  NONE    = 0x00,
+  LDAP    = 0x01,
+  GSSAPI  = 0x02,
+  ALL     = 0x04,
+};
+
 
 class GSSExceptionHandler : public std::exception
 {
@@ -90,9 +103,9 @@ class GSSExceptionHandler : public std::exception
     char m_gss_func[GSS_MAX_FUNC_SIZE]{};
 };
 
+
 }   //-- namespace gss_utils
 
 #endif    //-- GSS_UTILS_HPP
 
-// ----------------------------- END-OF-FILE --------------------------------//
 

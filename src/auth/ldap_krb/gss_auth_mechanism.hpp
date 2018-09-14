@@ -15,21 +15,9 @@
 #ifndef GSS_AUTH_MECHANISM_HPP
 #define GSS_AUTH_MECHANISM_HPP
 
-/* Include order and names:
- * a) Immediate related header
- * b) C libraries (if any),
- * c) C++ libraries,
- * d) Other support libraries
- * e) Other project's support libraries
- *
- * Within each section the includes should
- * be ordered alphabetically.
- */
-
 #include <algorithm>
 #include <string>
 
-#include "auth_mechanism.hpp"
 #include "gss_utils.hpp"
 
 
@@ -181,24 +169,38 @@
  *
  */
 
-namespace gss_client_auth {
+namespace gss_client_auth 
+{
 
 // Possible/valid gss authentication options.
-enum class GSSAuthenticationOptions {
+enum class GSSAuthenticationOptions 
+{
   SPNEGO,
   KRB5,
   GSS_OID,
 };
 
-enum class GSSAuthenticationRequest {
+enum class GSSAuthenticationRequest 
+{
   GSS_CRYPTO_ERR    = 1,
   GSS_MUTUAL        = 0x100,
   GSS_TOKEN         = 0x200,
   GSS_REQUEST_MASK  = 0x0F00
 };
 
-static constexpr auto BUFF_IN_SIZE  = 8192;
-static constexpr auto BUFF_OUT_SIZE = 8192;
+enum class GSSKeyExchange 
+{
+  USERAUTH_GSSAPI_RESPONSE = 70,
+  USERAUTH_GSSAPI_TOKEN,
+  USERAUTH_GSSAPI_EXCHANGE_COMPLETE,
+  USERAUTH_GSSAPI_ERROR, 
+  USERAUTH_GSSAPI_ERRTOK, 
+  USERAUTH_GSSAPI_MIC, 
+};
+static constexpr auto CEPH_GSS_OIDTYPE(0x07);
+
+static constexpr auto BUFF_IN_SIZE(8192);
+static constexpr auto BUFF_OUT_SIZE(8192);
 
 /// All the similarities in between clients and servers will be captured
 /// in this class. For example, both servers and clients need to produce
@@ -213,19 +215,19 @@ class GSSDataBuffer;
 class GSSMechanismBase 
 {
   public:
-      GSSMechanismBase(const std::string&);
-      GSSMechanismBase() : m_gss_oid(GSS_C_NO_OID) { }
-      GSSMechanismBase(gss_OID gss_oid) : m_gss_oid(gss_oid) { }
+    GSSMechanismBase(const std::string&);
+    GSSMechanismBase() : m_gss_oid(GSS_C_NO_OID) { }
+    GSSMechanismBase(gss_OID gss_oid) : m_gss_oid(gss_oid) { }
 
-      size_t get_size() const { return m_gss_oid->length; }
-      std::string get_string() const;
+    size_t get_size() const { return m_gss_oid->length; }
+    std::string get_string() const;
 
-      operator gss_OID() { return m_gss_oid; }
-      operator gss_OID*() { return &m_gss_oid; }
+    operator gss_OID() { return m_gss_oid; }
+    operator gss_OID*() { return &m_gss_oid; }
 
 
   private:
-      gss_OID m_gss_oid;
+    gss_OID m_gss_oid;
 
 };  //-- class GSSMechanismBase
 
@@ -243,9 +245,9 @@ class GSSMechanismList
 
     void gss_mechanism_add(const GSSMechanismBase&);
     bool is_it_gss_mechanism_set(const GSSMechanismBase&) const;
-    const GSSMechanismBase at(size_t idx) const;
+    const GSSMechanismBase at(size_t) const;
 
-    const GSSMechanismBase operator[] (size_t idx) const;
+    const GSSMechanismBase operator[] (size_t) const;
     GSSMechanismList& operator+= (const GSSMechanismBase&);
     operator gss_OID_set() { return m_gss_oid_set; }
     operator gss_OID_set*() { return &m_gss_oid_set; }
@@ -259,14 +261,15 @@ class GSSNameType
   public:
     /* Taken from ./include/gssapi/gssapi.h
     */
-    enum class GSSNameOption {
-        NT_NO_OID,
-        NT_USER_NAME,
-        NT_MACHINE_UID_NAME,
-        NT_STRING_UID_NAME,
-        NT_HOSTBASED_SERVICE,
-        NT_ANONYMOUS,
-        NT_EXPORT_NAME
+    enum class GSSNameOption 
+    {
+      NT_NO_OID,
+      NT_USER_NAME,
+      NT_MACHINE_UID_NAME,
+      NT_STRING_UID_NAME,
+      NT_HOSTBASED_SERVICE,
+      NT_ANONYMOUS,
+      NT_EXPORT_NAME, 
     };
 
     /* Update this if more name options are added.
@@ -281,7 +284,7 @@ class GSSNameType
     GSSNameType(const char*, 
                 GSSNameOption = GSSNameOption::NT_HOSTBASED_SERVICE);
     GSSNameType(const std::string&, 
-                GSSNameOption  = GSSNameOption::NT_HOSTBASED_SERVICE);
+                GSSNameOption = GSSNameOption::NT_HOSTBASED_SERVICE);
     ~GSSNameType() { gss_name_type_clear(); }
 
     void gss_name_type_set(const GSSNameType&);
@@ -644,5 +647,5 @@ std::istream& operator>> (std::istream& ,
 
 #endif    //-- GSS_AUTH_MECHANISM_HPP
 
-// ----------------------------- END-OF-FILE --------------------------------//
+
 

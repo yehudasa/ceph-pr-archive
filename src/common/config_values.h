@@ -29,9 +29,6 @@ public:
   ceph::logging::SubsystemMap subsys;
   bool no_mon_config = false;
 
-  /// kerberos keytab file name
-  std::string krb_ktfile_client;
-
   // Set of configuration options that have changed since the last
   // apply_changes
   using changed_set_t = std::set<std::string>;

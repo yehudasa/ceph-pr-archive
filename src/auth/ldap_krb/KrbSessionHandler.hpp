@@ -15,17 +15,6 @@
 #ifndef KRB_SESSION_HANDLER_HPP
 #define KRB_SESSION_HANDLER_HPP
 
-/* Include order and names:
- * a) Immediate related header
- * b) C libraries (if any),
- * c) C++ libraries,
- * d) Other support libraries
- * e) Other project's support libraries
- *
- * Within each section the includes should
- * be ordered alphabetically.
- */
-
 #include "auth/AuthServiceHandler.h"
 #include "msg/Message.h"
 
@@ -33,7 +22,7 @@ class KrbSessionHandler : public AuthSessionHandler
 {
   public:
     KrbSessionHandler(CephContext* ceph_ctx, CryptoKey session_key) : 
-        AuthSessionHandler(ceph_ctx, CEPH_AUTH_KRB5, session_key) { }
+        AuthSessionHandler(ceph_ctx, CEPH_AUTH_GSS, session_key) { }
     ~KrbSessionHandler() override = default; 
 
     bool no_security() override { return true; }
@@ -46,7 +35,5 @@ class KrbSessionHandler : public AuthSessionHandler
 };
 
 #endif    //-- KRB_SESSION_HANDLER_HPP
-
-// ----------------------------- END-OF-FILE --------------------------------//
 
 
