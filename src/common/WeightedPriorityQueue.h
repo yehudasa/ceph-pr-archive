@@ -193,14 +193,12 @@ class WeightedPriorityQueue :  public OpQueue <T, K>
       unsigned total_prio;
       unsigned max_cost;
       public:
-	unsigned size;
 	Queue() :
 	  total_prio(0),
-	  max_cost(0),
-	  size(0)
+	  max_cost(0)
 	  {}
 	bool empty() const {
-	  return !size;
+	  return queues.empty();
 	}
 	void insert(unsigned p, K cl, unsigned cost, T&& item, bool front = false) {
 	  typename SubQueues::insert_commit_data insert_data;
@@ -214,10 +212,8 @@ class WeightedPriorityQueue :  public OpQueue <T, K>
 	  if (cost > max_cost) {
 	    max_cost = cost;
 	  }
-	  ++size;
 	}
 	T pop(bool strict = false) {
-	  --size;
 	  Sit i = --queues.end();
 	  if (strict) {
 	    T ret = i->pop();
@@ -260,7 +256,7 @@ class WeightedPriorityQueue :  public OpQueue <T, K>
 	}
 	void filter_class(K& cl, std::list<T>* out) {
 	  for (Sit i = queues.begin(); i != queues.end();) {
-	    size -= i->filter_class(cl, out);
+	    i->filter_class(cl, out);
 	    if (i->empty()) {
 	      total_prio -= i->key;
 	      i = queues.erase_and_dispose(i, DelItem<SubQueue>());
@@ -291,15 +287,12 @@ class WeightedPriorityQueue :  public OpQueue <T, K>
       {
 	std::srand(time(0));
       }
-    unsigned length() const final {
-      return strict.size + normal.size;
-    }
     void remove_by_class(K cl, std::list<T>* removed = 0) final {
       strict.filter_class(cl, removed);
       normal.filter_class(cl, removed);
     }
     bool empty() const final {
-      return !(strict.size + normal.size);
+      return strict.empty() && normal.empty();
     }
     void enqueue_strict(K cl, unsigned p, T&& item) final {
       strict.insert(p, cl, 0, std::move(item));
@@ -314,7 +307,7 @@ class WeightedPriorityQueue :  public OpQueue <T, K>
       normal.insert(p, cl, cost, std::move(item), true);
     }
     T dequeue() override {
-      ceph_assert(strict.size + normal.size > 0);
+      ceph_assert(!empty());
       if (!strict.empty()) {
 	return strict.pop(true);
       }
