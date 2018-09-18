@@ -462,7 +462,7 @@ MDSRank::MDSRank(
         }
       )
     ),
-    progress_thread(this), dispatch_depth(0),
+    progress_thread(this),
     hb(NULL), last_tid(0), osd_epoch_barrier(0), beacon(beacon_),
     mds_slow_req_count(0),
     last_client_mdsmap_bcast(0),
@@ -970,40 +970,17 @@ void MDSRank::ProgressThread::shutdown()
   }
 }
 
-bool MDSRankDispatcher::ms_dispatch(const Message::const_ref &m)
-{
-  bool ret;
-  inc_dispatch_depth();
-  ret = _dispatch(m, true);
-  dec_dispatch_depth();
-  return ret;
-}
-
-bool MDSRank::_dispatch(const Message::const_ref &m, bool new_msg)
+bool MDSRank::_dispatch(const Message::const_ref &m)
 {
   if (is_stale_message(m)) {
     return true;
   }
 
-  if (beacon.is_laggy()) {
-    dout(5) << " laggy, deferring " << *m << dendl;
-    waiting_for_nolaggy.push_back(m);
-  } else if (new_msg && !waiting_for_nolaggy.empty()) {
-    dout(5) << " there are deferred messages, deferring " << *m << dendl;
-    waiting_for_nolaggy.push_back(m);
-  } else {
-    if (!handle_deferrable_message(m)) {
-      dout(0) << "unrecognized message " << *m << dendl;
-      return false;
-    }
-
-    heartbeat_reset();
+  if (!handle_deferrable_message(m)) {
+    dout(0) << "unrecognized message " << *m << dendl;
+    return false;
   }
 
-  if (dispatch_depth > 1)
-    return true;
-
-  // finish any triggered contexts
   _advance_queues();
 
   if (beacon.is_laggy()) {
@@ -1012,14 +989,17 @@ bool MDSRank::_dispatch(const Message::const_ref &m, bool new_msg)
     return true;
   }
 
-  // hack: thrash exports
-  static utime_t start;
-  utime_t now = ceph_clock_now();
-  if (start == utime_t())
-    start = now;
-  /*double el = now - start;
-  if (el > 30.0 &&
-    el < 60.0)*/
+  // done with all client replayed requests?
+  if (is_clientreplay() &&
+      mdcache->is_open() &&
+      replay_queue.empty() &&
+      beacon.get_want_state() == MDSMap::STATE_CLIENTREPLAY) {
+    int num_requests = mdcache->get_num_client_requests();
+    dout(10) << " still have " << num_requests << " active replay requests" << dendl;
+    if (num_requests == 0)
+      clientreplay_done();
+  }
+
   for (int i=0; i<g_conf()->mds_thrash_exports; i++) {
     set<mds_rank_t> s;
     if (!is_active()) break;
@@ -1112,6 +1092,28 @@ void MDSRank::update_mlogger()
     mlogger->set(l_mdm_caps, Capability::decrements());
     mlogger->set(l_mdm_buf, buffer::get_total_alloc());
   }
+}
+
+bool MDSRankDispatcher::ms_can_fast_dispatch(const Message::const_ref &m) const
+{
+  int type = m->get_type();
+  int port = type & 0xff00;
+  if (port == MDS_PORT_CACHE ||
+      port == MDS_PORT_MIGRATOR)
+    return true;
+  if (type == CEPH_MSG_CLIENT_SESSION ||
+      type == CEPH_MSG_CLIENT_RECONNECT ||
+      type == CEPH_MSG_CLIENT_REQUEST ||
+      type == MSG_MDS_SLAVE_REQUEST ||
+      type == MSG_MDS_HEARTBEAT ||
+      type == MSG_MDS_TABLE_REQUEST ||
+      type == MSG_MDS_LOCK ||
+      type == MSG_MDS_INODEFILECAPS ||
+      type == CEPH_MSG_CLIENT_CAPS ||
+      type == CEPH_MSG_CLIENT_CAPRELEASE ||
+      type == CEPH_MSG_CLIENT_LEASE)
+    return true;
+  return false;
 }
 
 /*
@@ -1410,13 +1412,6 @@ void MDSRank::set_osd_epoch_barrier(epoch_t e)
 {
   dout(4) << __func__ << ": epoch=" << e << dendl;
   osd_epoch_barrier = e;
-}
-
-void MDSRank::retry_dispatch(const Message::const_ref &m)
-{
-  inc_dispatch_depth();
-  _dispatch(m, false);
-  dec_dispatch_depth();
 }
 
 double MDSRank::get_dispatch_queue_max_age(utime_t now) const
@@ -3301,6 +3296,8 @@ void MDSRank::bcast_mds_map()
 }
 
 // workqueue
+thread_local MDSRank::MDSShard* MDSRank::tls_shard;
+
 void MDSRank::ShardedOpWQ::return_waiting_threads() {
   for (auto& sdata : mds->shards) {
     std::unique_lock<std::mutex> lock(sdata.op_lock);
@@ -3381,7 +3378,12 @@ void MDSRank::ShardedOpWQ::_process(uint32_t thread_index, heartbeat_handle_d *h
   }
   lock.unlock();
 
+  tls_shard = &sdata;
+  sdata.op_current_seq = item.get_seq();
+
   item.get_op().run(mds);
+
+  sdata.op_current_seq = 0;
 
   mds->heartbeat_reset();
 }
