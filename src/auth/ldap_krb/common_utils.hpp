@@ -3,8 +3,9 @@
 /*
  * Ceph - scalable distributed file system
  *
- * Copyright (C) 2017 Daniel Oliveira <doliveira@suse.com>
- *
+ * Copyright (c) 2018 SUSE LLC.
+ * Author: Daniel Oliveira <doliveira@suse.com>
+ * 
  * This is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
  * License version 2.1, as published by the Free Software
@@ -433,5 +434,4 @@ namespace threading {
 }
 
 #endif    //-- COMMON_UTILS_HPP
-
 

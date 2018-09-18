@@ -4993,6 +4993,7 @@ std::vector<Option> get_global_options() {
     Option("gss_ktab_client_file", Option::TYPE_STR, Option::LEVEL_ADVANCED)
     .set_default("/var/lib/ceph/$name/gss_client_$name.ktab")
     .set_description("GSS/KRB5 Keytab file for client authentication")
+    .add_service({"mon", "osd"})
     .set_long_description("This sets the full path for the GSS/Kerberos client keytab file location."),
   });
 }
