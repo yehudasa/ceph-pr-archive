@@ -498,7 +498,7 @@ void Objecter::_send_linger(LingerOp *info,
 
   vector<OSDOp> opv;
   Context *oncommit = NULL;
-  LingerOp::shared_lock watchl(info->watch_lock);
+  std::shared_lock watchl(info->watch_lock);
   bufferlist *poutbl = NULL;
   if (info->registered && info->is_watch) {
     ldout(cct, 15) << "send_linger " << info->linger_id << " reconnect"
@@ -554,7 +554,7 @@ void Objecter::_send_linger(LingerOp *info,
 
 void Objecter::_linger_commit(LingerOp *info, int r, bufferlist& outbl)
 {
-  LingerOp::unique_lock wl(info->watch_lock);
+  std::unique_lock wl(info->watch_lock);
   ldout(cct, 10) << "_linger_commit " << info->linger_id << dendl;
   if (info->on_reg_commit) {
     info->on_reg_commit->complete(r);
@@ -620,7 +620,7 @@ void Objecter::_linger_reconnect(LingerOp *info, int r)
   ldout(cct, 10) << __func__ << " " << info->linger_id << " = " << r
 		 << " (last_error " << info->last_error << ")" << dendl;
   if (r < 0) {
-    LingerOp::unique_lock wl(info->watch_lock);
+    std::unique_lock wl(info->watch_lock);
     if (!info->last_error) {
       r = _normalize_watch_error(r);
       info->last_error = r;
@@ -675,7 +675,7 @@ void Objecter::_send_linger_ping(LingerOp *info)
 void Objecter::_linger_ping(LingerOp *info, int r, ceph::coarse_mono_time sent,
 			    uint32_t register_gen)
 {
-  LingerOp::unique_lock l(info->watch_lock);
+  std::unique_lock l(info->watch_lock);
   ldout(cct, 10) << __func__ << " " << info->linger_id
 		 << " sent " << sent << " gen " << register_gen << " = " << r
 		 << " (last_error " << info->last_error
@@ -697,7 +697,7 @@ void Objecter::_linger_ping(LingerOp *info, int r, ceph::coarse_mono_time sent,
 
 int Objecter::linger_check(LingerOp *info)
 {
-  LingerOp::shared_lock l(info->watch_lock);
+  std::shared_lock l(info->watch_lock);
 
   ceph::coarse_mono_time stamp = info->watch_valid_thru;
   if (!info->watch_pending_async.empty())
@@ -871,7 +871,7 @@ void Objecter::handle_watch_notify(MWatchNotify *m)
     ldout(cct, 7) << __func__ << " cookie " << m->cookie << " dne" << dendl;
     return;
   }
-  LingerOp::unique_lock wl(info->watch_lock);
+  std::unique_lock wl(info->watch_lock);
   if (m->opcode == CEPH_WATCH_EVENT_DISCONNECT) {
     if (!info->last_error) {
       info->last_error = -ENOTCONN;
@@ -1626,7 +1626,7 @@ void Objecter::_check_linger_pool_dne(LingerOp *op, bool *need_unregister)
   }
   if (op->map_dne_bound > 0) {
     if (osdmap->get_epoch() >= op->map_dne_bound) {
-      LingerOp::unique_lock wl{op->watch_lock};
+      std::unique_lock wl{op->watch_lock};
       if (op->on_reg_commit) {
 	op->on_reg_commit->complete(-ENOENT);
 	op->on_reg_commit = nullptr;
@@ -2097,7 +2097,7 @@ void Objecter::tick()
 	p != s->linger_ops.end();
 	++p) {
       LingerOp *op = p->second;
-      LingerOp::unique_lock wl(op->watch_lock);
+      std::unique_lock wl(op->watch_lock);
       ceph_assert(op->session);
       ldout(cct, 10) << " pinging osd that serves lingering tid " << p->first
 		     << " (osd." << op->session->osd << ")" << dendl;
