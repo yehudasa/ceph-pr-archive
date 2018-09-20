@@ -462,7 +462,6 @@ MDSRank::MDSRank(
         }
       )
     ),
-    progress_thread(this),
     hb(NULL), last_tid(0), osd_epoch_barrier(0), beacon(beacon_),
     mds_slow_req_count(0),
     last_client_mdsmap_bcast(0),
@@ -560,12 +559,11 @@ void MDSRankDispatcher::init()
   // who is interested in it.
   handle_osd_map();
 
-  progress_thread.create("mds_rank_progr");
-
   purge_queue.init();
 
   finisher->start();
 
+  shards.emplace_back(0, cct, this);
   op_tp.start();
 }
 
@@ -685,9 +683,8 @@ void MDSRankDispatcher::tick()
 
   check_ops_in_flight();
 
-  // Wake up thread in case we use to be laggy and have waiting_for_nolaggy
-  // messages to progress.
-  progress_thread.signal();
+  // Wake up workqueue in case we use to be laggy.
+  op_shardedwq.signal();
 
   // make sure mds log flushes, trims periodically
   mdlog->flush();
@@ -807,8 +804,6 @@ void MDSRankDispatcher::shutdown()
   monc->shutdown();
 
   op_tracker.on_shutdown();
-
-  progress_thread.shutdown();
 
   // release mds_lock for finisher/messenger threads (e.g.
   // MDSDaemon::ms_handle_reset called from Messenger).
@@ -932,56 +927,15 @@ void MDSRank::handle_write_error(int err)
   }
 }
 
-void *MDSRank::ProgressThread::entry()
-{
-  Mutex::Locker l(mds->mds_lock);
-  while (true) {
-    while (!mds->stopping &&
-	   mds->finished_queue.empty() &&
-	   (mds->waiting_for_nolaggy.empty() || mds->beacon.is_laggy())) {
-      cond.Wait(mds->mds_lock);
-    }
-
-    if (mds->stopping) {
-      break;
-    }
-
-    mds->_advance_queues();
-  }
-
-  return NULL;
-}
-
-
-void MDSRank::ProgressThread::shutdown()
-{
-  ceph_assert(mds->mds_lock.is_locked_by_me());
-  ceph_assert(mds->stopping);
-
-  if (am_self()) {
-    // Stopping is set, we will fall out of our main loop naturally
-  } else {
-    // Kick the thread to notice mds->stopping, and join it
-    cond.Signal();
-    mds->mds_lock.Unlock();
-    if (is_started())
-      join();
-    mds->mds_lock.Lock();
-  }
-}
-
 bool MDSRank::_dispatch(const Message::const_ref &m)
 {
-  if (is_stale_message(m)) {
+  if (is_stale_message(m))
     return true;
-  }
 
   if (!handle_deferrable_message(m)) {
     dout(0) << "unrecognized message " << *m << dendl;
     return false;
   }
-
-  _advance_queues();
 
   if (beacon.is_laggy()) {
     // We've gone laggy during dispatch, don't do any
@@ -1188,48 +1142,6 @@ bool MDSRank::handle_deferrable_message(const Message::const_ref &m)
   }
 
   return true;
-}
-
-/**
- * Advance finished_queue and waiting_for_nolaggy.
- *
- * Usually drain both queues, but may not drain waiting_for_nolaggy
- * if beacon is currently laggy.
- */
-void MDSRank::_advance_queues()
-{
-  ceph_assert(mds_lock.is_locked_by_me());
-
-  if (!finished_queue.empty()) {
-    dout(7) << "mds has " << finished_queue.size() << " queued contexts" << dendl;
-    while (!finished_queue.empty()) {
-      auto fin = finished_queue.front();
-      finished_queue.pop_front();
-
-      dout(10) << " finish " << fin << dendl;
-      fin->complete(0);
-
-      heartbeat_reset();
-    }
-  }
-
-  while (!waiting_for_nolaggy.empty()) {
-    // stop if we're laggy now!
-    if (beacon.is_laggy())
-      break;
-
-    Message::const_ref old = waiting_for_nolaggy.front();
-    waiting_for_nolaggy.pop_front();
-
-    if (!is_stale_message(old)) {
-      dout(7) << " processing laggy deferred " << *old << dendl;
-      if (!handle_deferrable_message(old)) {
-        dout(0) << "unrecognized message " << *old << dendl;
-      }
-    }
-
-    heartbeat_reset();
-  }
 }
 
 /**
@@ -1876,8 +1788,9 @@ void MDSRank::clientreplay_start()
 bool MDSRank::queue_one_replay()
 {
   if (!replay_queue.empty()) {
-    queue_waiter(replay_queue.front());
+    auto fin = replay_queue.front();
     replay_queue.pop_front();
+    fin->complete(0);
     return true;
   }
   // don't go to active if there are session waiting for being reclaimed
@@ -2272,7 +2185,7 @@ void MDSRankDispatcher::handle_mds_map(
     dout(1) << "cluster recovered." << dendl;
     auto it = waiting_for_active_peer.find(MDS_RANK_NONE);
     if (it != waiting_for_active_peer.end()) {
-      queue_waiters(it->second);
+      finish_contexts(g_ceph_context, it->second);
       waiting_for_active_peer.erase(it);
     }
   }
@@ -2307,10 +2220,8 @@ void MDSRankDispatcher::handle_mds_map(
   {
     map<epoch_t,MDSInternalContextBase::vec >::iterator p = waiting_for_mdsmap.begin();
     while (p != waiting_for_mdsmap.end() && p->first <= mdsmap->get_epoch()) {
-      MDSInternalContextBase::vec ls;
-      ls.swap(p->second);
+      finish_contexts(g_ceph_context, p->second);
       waiting_for_mdsmap.erase(p++);
-      queue_waiters(ls);
     }
   }
 
@@ -2352,8 +2263,11 @@ void MDSRank::handle_mds_recovery(mds_rank_t who)
 
   mdcache->handle_mds_recovery(who);
 
-  queue_waiters(waiting_for_active_peer[who]);
-  waiting_for_active_peer.erase(who);
+  auto it = waiting_for_active_peer.find(who);
+  if (it != waiting_for_active_peer.end()) {
+    finish_contexts(g_ceph_context, it->second);
+    waiting_for_active_peer.erase(it);
+  }
 }
 
 void MDSRank::handle_mds_failure(mds_rank_t who)
@@ -3386,6 +3300,19 @@ void MDSRank::ShardedOpWQ::_process(uint32_t thread_index, heartbeat_handle_d *h
   sdata.op_current_seq = 0;
 
   mds->heartbeat_reset();
+}
+
+void MDSRank::ShardedOpWQ::signal() {
+  for (auto& sdata : mds->shards) {
+    std::unique_lock<std::mutex> lock(sdata.op_lock);
+    sdata.op_cond.notify_all();
+  }
+}
+
+void MDSRank::OpQueueableRequest::run(MDSRank *mds)
+{
+  Mutex::Locker l(mds->mds_lock);
+  mds->mdcache->dispatch_request(mdr);
 }
 
 MDSRankDispatcher::MDSRankDispatcher(
