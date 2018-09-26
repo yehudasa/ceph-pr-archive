@@ -39,13 +39,13 @@ const char *mempool::get_pool_name(mempool::pool_index_t ix) {
   return names[ix];
 }
 
-void mempool::dump(ceph::Formatter *f, size_t skip)
+void mempool::dump(ceph::Formatter *f)
 {
   stats_t total;
   f->open_object_section("mempool"); // we need (dummy?) topmost section for 
 				     // JSON Formatter to print pool names. It omits them otherwise.
   f->open_object_section("by_pool");
-  for (size_t i = skip; i < num_pools; ++i) {
+  for (size_t i = 0; i < num_pools; ++i) {
     const pool_t &pool = mempool::get_pool((pool_index_t)i);
     f->open_object_section(get_pool_name((pool_index_t)i));
     pool.dump(f, &total);
@@ -64,33 +64,25 @@ void mempool::set_debug_mode(bool d)
 // --------------------------------------------------------------
 // pool_t
 
-size_t mempool::pool_t::sumup(std::atomic<ssize_t> shard_t::*pm) const
+size_t mempool::pool_t::allocated_bytes() const
 {
   ssize_t result = 0;
   for (size_t i = 0; i < num_shards; ++i) {
-    result += shard[i].*pm;
+    result += shard[i].bytes;
   }
   ceph_assert(result >= 0);
   return (size_t) result;
 }
 
-size_t mempool::pool_t::sumupdiff(std::atomic<ssize_t> shard_t::*pl, std::atomic<ssize_t> shard_t::*pr) const {
+size_t mempool::pool_t::allocated_items() const
+{
   ssize_t result = 0;
   for (size_t i = 0; i < num_shards; ++i) {
-    result += shard[i].*pl - shard[i].*pr;
+    result += shard[i].items;
   }
   ceph_assert(result >= 0);
   return (size_t) result;
 }
-
-size_t mempool::pool_t::allocated_bytes() const { return sumup(&shard_t::bytes); }
-size_t mempool::pool_t::free_bytes()      const { return sumup(&shard_t::free_bytes); }
-size_t mempool::pool_t::inuse_bytes()     const { return sumupdiff(&shard_t::bytes,&shard_t::free_bytes); }
-size_t mempool::pool_t::allocated_items() const { return sumup(&shard_t::items); }
-size_t mempool::pool_t::free_items()      const { return sumup(&shard_t::free_items); }
-size_t mempool::pool_t::inuse_items()     const { return sumupdiff(&shard_t::items,&shard_t::free_items); }
-size_t mempool::pool_t::containers()      const { return sumup(&shard_t::containers); }
-size_t mempool::pool_t::slabs()           const { return sumup(&shard_t::slabs); }
 
 void mempool::pool_t::adjust_count(ssize_t items, ssize_t bytes)
 {
@@ -106,8 +98,6 @@ void mempool::pool_t::get_stats(
   for (size_t i = 0; i < num_shards; ++i) {
     total->items += shard[i].items;
     total->bytes += shard[i].bytes;
-    total->free_items += shard[i].free_items;
-    total->free_bytes += shard[i].free_bytes;
   }
   if (debug_mode) {
     std::lock_guard<std::mutex> shard_lock(lock);
@@ -116,8 +106,6 @@ void mempool::pool_t::get_stats(
       stats_t &s = (*by_type)[n];
       s.bytes = p.second.items * p.second.item_size;
       s.items = p.second.items;
-      s.free_items = p.second.free_items;
-      s.free_bytes = p.second.free_items * p.second.item_size;
     }
   }
 }
