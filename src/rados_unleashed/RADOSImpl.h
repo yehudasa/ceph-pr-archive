@@ -36,10 +36,12 @@
 
 
 namespace RADOS_unleashed {
+  class RADOS;
 namespace _ {
 
 class RADOS
 {
+  friend ::RADOS_unleashed::RADOS;
   struct MsgDeleter {
     void operator()(Messenger* p) const {
       if (p) {

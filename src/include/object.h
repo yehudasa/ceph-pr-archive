@@ -17,6 +17,8 @@
 
 #include <stdint.h>
 #include <stdio.h>
+#include <string>
+#include <string_view>
 
 #include <iosfwd>
 #include <iomanip>
@@ -39,6 +41,8 @@ struct object_t {
   object_t(const char *s) : name(s) {}
   // cppcheck-suppress noExplicitConstructor
   object_t(const string& s) : name(s) {}
+  object_t(std::string&& s) : name(std::move(s)) {}
+  object_t(string_view s) : name(s) {}
 
   void swap(object_t& o) {
     name.swap(o.name);

@@ -522,8 +522,8 @@ void Objecter::_send_linger(LingerOp *info,
   }
   watchl.unlock();
   Op *o = new Op(info->target.base_oid, info->target.base_oloc,
-		 opv, info->target.flags | CEPH_OSD_FLAG_READ,
-		 OpContextVert(oncommit), info->pobjver);
+		 std::move(opv), info->target.flags | CEPH_OSD_FLAG_READ,
+		 oncommit, info->pobjver);
   o->outbl = poutbl;
   o->snapid = info->snap;
   o->snapc = info->snapc;
@@ -658,8 +658,8 @@ void Objecter::_send_linger_ping(LingerOp *info)
   opv[0].op.watch.gen = info->register_gen;
   C_Linger_Ping *onack = new C_Linger_Ping(this, info);
   Op *o = new Op(info->target.base_oid, info->target.base_oloc,
-		 opv, info->target.flags | CEPH_OSD_FLAG_READ,
-		 OpContextVert(onack), NULL, NULL);
+		 std::move(opv), info->target.flags | CEPH_OSD_FLAG_READ,
+		 onack, NULL, NULL);
   o->target = info->target;
   o->should_resend = false;
   _send_op_account(o);
@@ -3414,6 +3414,10 @@ void Objecter::handle_osd_op_reply(MOSDOpReply *m)
 		  << " != request ops " << op->ops
 		  << " from " << m->get_source_inst() << dendl;
 
+  ceph_assert(op->ops.size() == op->out_bl.size());
+  ceph_assert(op->ops.size() == op->out_rval.size());
+  ceph_assert(op->ops.size() == op->out_ec.size());
+  ceph_assert(op->ops.size() == op->out_handler.size());
   auto pb = op->out_bl.begin();
   auto pr = op->out_rval.begin();
   auto pe = op->out_ec.begin();
