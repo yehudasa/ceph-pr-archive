@@ -67,6 +67,11 @@ struct cinode_lock_info_t {
 extern cinode_lock_info_t cinode_lock_info[];
 extern int num_cinode_locks;
 
+class BatchOpContext : public Context {
+public:
+  virtual void set_tracei(CInode* inode) = 0;
+  virtual void set_tracedn(CDentry* dentry) = 0;
+};
 
 /**
  * Base class for CInode, containing the backing store data and
@@ -264,6 +269,7 @@ class CInode : public MDSCacheObject, public InodeStoreBase, public Counter<CIno
   SnapRealm        *containing_realm = nullptr;
   snapid_t          first, last;
   mempool::mds_co::compact_set<snapid_t> dirty_old_rstats;
+  map<int, map<int, set<BatchOpContext*>>> batch_ops;
 
   class scrub_stamp_info_t {
   public:

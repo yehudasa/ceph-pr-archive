@@ -656,6 +656,14 @@ void CDir::try_remove_unlinked_dn(CDentry *dn)
 void CDir::unlink_inode_work(CDentry *dn)
 {
   CInode *in = dn->get_linkage()->get_inode();
+  if (in) {
+    for (auto fin_set : in->batch_ops[CEPH_MDS_OP_LOOKUP]) {
+      for (auto fin : fin_set.second) {
+  	fin->complete(-ENOENT);
+      }
+    }
+    in->batch_ops[CEPH_MDS_OP_LOOKUP].clear();
+  }
 
   if (dn->get_linkage()->is_remote()) {
     // remote

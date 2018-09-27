@@ -276,6 +276,8 @@ struct MDRequestImpl : public MutationImpl {
   // indicates how may retries of request have been made
   int retry;
 
+  bool batch_getattr_lookup = true;
+
   // indicator for vxattr osdmap update
   bool waited_for_osdmap;
 

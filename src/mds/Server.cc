@@ -75,6 +75,23 @@ class ServerContext : public MDSInternalContextBase {
   }
 };
 
+class C_MDS_Batch_Getattr_Lookup : public ServerContext, public BatchOpContext {
+protected:
+  MDRequestRef mdr;
+public:
+  C_MDS_Batch_Getattr_Lookup(Server* s, MDRequestRef& r) : ServerContext(s), mdr(r) {}
+  void set_tracei(CInode* inode) {
+    mdr->tracei = inode;
+  }
+  void set_tracedn(CDentry* dentry) {
+    mdr->tracedn = dentry;
+  }
+  void finish(int r) {
+    mdr->set_mds_stamp(ceph_clock_now());
+    server->respond_to_request(mdr, r);
+  }
+};
+
 class ServerLogContext : public MDSLogContextBase {
 protected:
   Server *server;
@@ -3395,6 +3412,17 @@ void Server::handle_client_getattr(MDRequestRef& mdr, bool is_lookup)
   CInode *ref = rdlock_path_pin_ref(mdr, 0, lov, want_auth, false, NULL,
 				    !is_lookup);
   if (!ref) return;
+  map<int, set<BatchOpContext*>>& reqs = ref->batch_ops[req->get_op()];
+
+  if (mdr->batch_getattr_lookup) {
+    if (reqs.count(mask)) {
+      mdr->getattr_caps = mask;
+      reqs[mask].insert(new C_MDS_Batch_Getattr_Lookup(this, mdr));
+      return;
+    } else
+      reqs[mask];
+  }
+  mdr->batch_getattr_lookup = false;
 
   /*
    * if client currently holds the EXCL cap on a field, do not rdlock
@@ -3438,6 +3466,15 @@ void Server::handle_client_getattr(MDRequestRef& mdr, bool is_lookup)
 
   if (!check_access(mdr, ref, MAY_READ))
     return;
+
+  for (auto fin : reqs[mask]) {
+    if (is_lookup)
+      fin->set_tracedn(mdr->dn[0].back());
+    fin->set_tracei(ref);
+    fin->complete(0);
+  }
+  reqs.erase(mask);
+
 
   utime_t now = ceph_clock_now();
   mdr->set_mds_stamp(now);
@@ -8148,6 +8185,14 @@ void Server::_rename_apply(MDRequestRef& mdr, CDentry *srcdn, CDentry *destdn, C
   CDentry::linkage_t *destdnl = destdn->get_linkage();
 
   CInode *oldin = destdnl->get_inode();
+  if (oldin) {
+    for (auto fin_set : oldin->batch_ops[CEPH_MDS_OP_LOOKUP]) {
+      for (auto fin : fin_set.second) {
+  	fin->complete(-ENOENT);
+      }
+    }
+    oldin->batch_ops[CEPH_MDS_OP_LOOKUP].clear();
+  }
 
   // primary+remote link merge?
   bool linkmerge = (srcdnl->get_inode() == oldin);
