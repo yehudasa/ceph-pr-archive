@@ -48,9 +48,4 @@ bool KrbAuthorizeHandler::verify_authorizer(CephContext* ceph_ctx,
   return true;
 }
 
-int KrbAuthorizeHandler::authorizer_session_crypto()
-{
-  return SESSION_SYMMETRIC_AUTHENTICATE;
-}
-
 

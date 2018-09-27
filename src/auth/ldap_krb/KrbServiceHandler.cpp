@@ -14,14 +14,12 @@
  */
 
 #include "KrbServiceHandler.hpp"
-
+#include "KrbProtocol.hpp"
 #include <errno.h>
 #include <sstream>
 
-#include "KrbProtocol.hpp"
 #include "common/config.h"
 #include "common/debug.h"
-
 
 #define dout_subsys ceph_subsys_auth
 #undef dout_prefix
@@ -34,7 +32,7 @@ int KrbServiceHandler::handle_request(bufferlist::const_iterator& indata,
                                       AuthCapsInfo& caps) 
 {
   auto result(0);
-  gss_buffer_desc gss_buffer_in = {0};
+  gss_buffer_desc gss_buffer_in = {0, nullptr};
   gss_name_t gss_client_name = GSS_C_NO_NAME;
   gss_OID gss_object_id = {0};
   OM_uint32 gss_major_status(0); 
@@ -131,8 +129,7 @@ int KrbServiceHandler::handle_request(bufferlist::const_iterator& indata,
     KrbResponse krb_response;
     KrbTokenBlob krb_token;
     krb_response.m_response_type = 
-        static_cast<int>(gss_client_auth::
-                         GSSAuthenticationRequest::GSS_TOKEN);
+        static_cast<int>(GSSAuthenticationRequest::GSS_TOKEN);
 
     using ceph::encode;
     encode(krb_response, buff_list);
@@ -157,16 +154,16 @@ int KrbServiceHandler::start_session(EntityName& name,
                                      AuthCapsInfo& caps)
 {
   auto result(0);
-  gss_buffer_desc gss_buffer_in = {0};
+  gss_buffer_desc gss_buffer_in = {0, nullptr};
   gss_name_t gss_client_name = GSS_C_NO_NAME;
   gss_OID gss_object_id = GSS_C_NT_HOSTBASED_SERVICE;
   gss_OID_set gss_mechs_wanted = GSS_C_NO_OID_SET;
   OM_uint32 gss_major_status(0); 
   OM_uint32 gss_minor_status(0);
   OM_uint32 gss_result_flags(0);
-  std::string gss_service_name(gss_utils::GSS_TARGET_DEFAULT_NAME);
+  std::string gss_service_name(GSS_TARGET_DEFAULT_NAME);
 
-  gss_buffer_in.length = gss_utils::GSS_TARGET_DEFAULT_NAME.length();
+  gss_buffer_in.length = GSS_TARGET_DEFAULT_NAME.length();
   gss_buffer_in.value  = (const_cast<char*>(gss_service_name.c_str()));
   entity_name = name;
 
@@ -212,8 +209,7 @@ int KrbServiceHandler::start_session(EntityName& name,
   } else {
     KrbResponse krb_response;
     krb_response.m_response_type = 
-        static_cast<int>(gss_client_auth::
-                            GSSAuthenticationRequest::GSS_MUTUAL);
+        static_cast<int>(GSSAuthenticationRequest::GSS_MUTUAL);
 
     using ceph::encode;
     encode(krb_response, buff_list);
@@ -231,5 +227,4 @@ KrbServiceHandler::~KrbServiceHandler()
   gss_delete_sec_context(&gss_minor_status, &m_gss_sec_ctx, GSS_C_NO_BUFFER); 
   gss_release_buffer(&gss_minor_status, static_cast<gss_buffer_t>(&m_gss_buffer_out)); 
 }
-
 

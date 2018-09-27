@@ -20,18 +20,19 @@
 #include "KrbProtocol.hpp"
 
 #include "auth/KeyRing.h"
+#include "include/random.h"
+#include "common/ceph_context.h"
 #include "common/config.h"
 #include "common/dout.h"
 
 #define dout_subsys ceph_subsys_auth
 #undef dout_prefix
-#define dout_prefix *_dout << "krb5/gssapi request: "
+#define dout_prefix *_dout << "krb5/gssapi client request: "
 
 struct AuthAuthorizer;
 
-template<LockPolicy lp> 
 AuthAuthorizer* 
-KrbClientHandler<lp>::build_authorizer(uint32_t service_id) const 
+KrbClientHandler::build_authorizer(uint32_t service_id) const 
 {
   ldout(cct, 20) 
       << "KrbClientHandler::build_authorizer(): Service: " 
@@ -44,8 +45,8 @@ KrbClientHandler<lp>::build_authorizer(uint32_t service_id) const
   return krb_auth;
 }
 
-template<LockPolicy lp> 
-KrbClientHandler<lp>::~KrbClientHandler() 
+
+KrbClientHandler::~KrbClientHandler() 
 {
   OM_uint32 gss_major_status(0); 
   OM_uint32 gss_minor_status(0); 
@@ -58,8 +59,8 @@ KrbClientHandler<lp>::~KrbClientHandler()
                      static_cast<gss_buffer_t>(&m_gss_buffer_out)); 
 }
 
-template<LockPolicy lp>
-int KrbClientHandler<lp>::build_request(bufferlist& buff_list) const
+
+int KrbClientHandler::build_request(bufferlist& buff_list) const
 {
   ldout(cct, 20) 
       << "KrbClientHandler::build_request() " << dendl; 
@@ -68,8 +69,7 @@ int KrbClientHandler<lp>::build_request(bufferlist& buff_list) const
   KrbRequest krb_request; 
 
   krb_request.m_request_type = 
-      static_cast<int>(gss_client_auth::
-                          GSSAuthenticationRequest::GSS_TOKEN);
+      static_cast<int>(GSSAuthenticationRequest::GSS_TOKEN);
 
   using ceph::encode;
   encode(krb_request, buff_list);
@@ -89,13 +89,13 @@ int KrbClientHandler<lp>::build_request(bufferlist& buff_list) const
   return 0;
 }
 
-template<LockPolicy lp>
-int KrbClientHandler<lp>::handle_response(int ret, 
-                                      bufferlist::const_iterator& buff_list)
+
+int KrbClientHandler::handle_response(int ret, 
+                                          bufferlist::const_iterator& buff_list)
 {
   auto result(ret);
-  gss_buffer_desc gss_buffer_in; 
-  gss_OID_set_desc gss_mechs_wanted;
+  gss_buffer_desc gss_buffer_in = {0, nullptr};
+  gss_OID_set_desc gss_mechs_wanted = {0, nullptr};
   OM_uint32 gss_major_status(0); 
   OM_uint32 gss_minor_status(0); 
   OM_uint32 gss_wanted_flags(GSS_C_MUTUAL_FLAG | 
@@ -117,7 +117,7 @@ int KrbClientHandler<lp>::handle_response(int ret,
   using ceph::decode;
   decode(krb_response, buff_list);
   if (m_gss_credentials == GSS_C_NO_CREDENTIAL) {
-    gss_buffer_desc krb_client_name_buff;
+    gss_buffer_desc krb_client_name_buff = {0, nullptr};
     gss_OID krb_client_type = GSS_C_NT_USER_NAME;
     std::string krb_client_name(cct->_conf->name.to_str());
 
@@ -167,11 +167,11 @@ int KrbClientHandler<lp>::handle_response(int ret,
       return (-EACCES);
     }
 
-    gss_buffer_desc krb_input_name_buff;
+    gss_buffer_desc krb_input_name_buff = {0, nullptr};
     gss_OID krb_input_type = GSS_C_NT_HOSTBASED_SERVICE;
-    krb_input_name_buff.length = gss_utils::GSS_TARGET_DEFAULT_NAME.length();
+    krb_input_name_buff.length = GSS_TARGET_DEFAULT_NAME.length();
     krb_input_name_buff.value  = (const_cast<char*>
-                                  (gss_utils::GSS_TARGET_DEFAULT_NAME.c_str()));
+                                  (GSS_TARGET_DEFAULT_NAME.c_str()));
 
     gss_major_status = gss_import_name(&gss_minor_status, 
                                        &krb_input_name_buff, 
@@ -252,8 +252,4 @@ int KrbClientHandler<lp>::handle_response(int ret,
 
   return result;
 }
-
-// explicitly instantiate only the classes we need
-template class KrbClientHandler<LockPolicy::MUTEX>;
-
 

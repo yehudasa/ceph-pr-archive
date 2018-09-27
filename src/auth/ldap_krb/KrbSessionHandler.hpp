@@ -16,11 +16,14 @@
 #ifndef KRB_SESSION_HANDLER_HPP
 #define KRB_SESSION_HANDLER_HPP
 
-#include "auth/AuthServiceHandler.h"
-#include "msg/Message.h"
+#include "auth/AuthSessionHandler.h"
+#include "auth/Auth.h"
 
-class KrbSessionHandler : public AuthSessionHandler
-{
+class CephContext;
+class Message;
+
+class KrbSessionHandler : public AuthSessionHandler {
+
   public:
     KrbSessionHandler(CephContext* ceph_ctx, CryptoKey session_key) : 
         AuthSessionHandler(ceph_ctx, CEPH_AUTH_GSS, session_key) { }

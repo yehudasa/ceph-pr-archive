@@ -19,28 +19,33 @@
 #include "auth/AuthServiceHandler.h"
 #include "auth/Auth.h"
 #include "auth/cephx/CephxKeyServer.h"
-#include "gss_utils.hpp"
 
-class KrbServiceHandler : public AuthServiceHandler 
-{
+#include <gssapi.h>
+#include <gssapi/gssapi_generic.h>
+#include <gssapi/gssapi_krb5.h>
+#include <gssapi/gssapi_ext.h>
+
+
+class KrbServiceHandler : public AuthServiceHandler {
 
   public:
-    explicit KrbServiceHandler(CephContext* cct, KeyServer* kserver) : 
-      AuthServiceHandler(cct), 
-      m_gss_buffer_out({0}), 
+    explicit KrbServiceHandler(CephContext* ceph_ctx, KeyServer* kserver) : 
+      AuthServiceHandler(ceph_ctx), 
+      m_gss_buffer_out({0, nullptr}), 
       m_gss_credentials(GSS_C_NO_CREDENTIAL), 
       m_gss_sec_ctx(GSS_C_NO_CONTEXT), 
       m_gss_service_name(GSS_C_NO_NAME), 
       m_key_server(kserver) { }
     ~KrbServiceHandler();
-    int handle_request(bufferlist::const_iterator&, 
-                       bufferlist&, 
-                       uint64_t&, 
-                       AuthCapsInfo&) override;
-    int start_session(EntityName&, 
-                      bufferlist::const_iterator&, 
-                      bufferlist&, 
-                      AuthCapsInfo&) override;
+    int handle_request(bufferlist::const_iterator& indata, 
+                       bufferlist& buff_list, 
+                       uint64_t& global_id, 
+                       AuthCapsInfo& caps) override;
+
+    int start_session(EntityName& name, 
+                      bufferlist::const_iterator& indata, 
+                      bufferlist& buff_list, 
+                      AuthCapsInfo& caps) override;
 
   private: 
     gss_buffer_desc m_gss_buffer_out; 
@@ -52,5 +57,4 @@ class KrbServiceHandler : public AuthServiceHandler
 };
 
 #endif    //-- KRB_SERVICE_HANDLER_HPP
-
 

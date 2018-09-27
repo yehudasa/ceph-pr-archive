@@ -80,11 +80,8 @@ struct ceph_dir_layout {
       - Authorization:  Verifying that an authenticated entity has
                         the right to access a particular resource.
 */ 
-#define CEPH_AUTH_LDAP      0x4
-#define CEPH_AUTH_GSS       0x8
-#define CEPH_AUTH_LDAP_LDAP CEPH_AUTH_LDAP
-#define CEPH_AUTH_GSS_GSS   CEPH_AUTH_GSS
-#define CEPH_AUTH_LDAP_GSS  0x10
+#define CEPH_AUTH_GSS     0x4
+#define CEPH_AUTH_GSS_GSS CEPH_AUTH_GSS
 
 #define CEPH_AUTH_UID_DEFAULT ((__u64) -1)
 

@@ -13,12 +13,16 @@
  *
  */
 
-#ifndef CEPH_KRB_AUTH_HPP
-#define CEPH_KRB_AUTH_HPP
+#include "KrbSessionHandler.hpp"
+#include "KrbProtocol.hpp"
 
-#include "common_utils.hpp"
-#include "gss_auth_mechanism.hpp"
-#include "gss_utils.hpp"
+#include <errno.h>
+#include <sstream>
 
-#endif    //-- CEPH_KRB_AUTH_HPP
+#include "common/config.h"
+#include "include/ceph_features.h"
+#include "msg/Message.h"
+ 
+#define dout_subsys ceph_subsys_auth
+
 

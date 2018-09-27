@@ -31,7 +31,7 @@ std::string gss_auth_show_status(const OM_uint32 gss_major_status,
   const std::string STR_DOT(".");
   const std::string STR_BLANK(" ");
 
-  gss_buffer_desc gss_str_status = {0};
+  gss_buffer_desc gss_str_status = {0, nullptr};
   OM_uint32 gss_maj_status(0); 
   OM_uint32 gss_min_status(0);
   OM_uint32 gss_ctx_message(-1);
@@ -72,7 +72,6 @@ std::string gss_auth_show_status(const OM_uint32 gss_major_status,
       gss_maj_status = gss_display_status(&gss_min_status, 
                                           gss_minor_status, 
                                           GSS_C_MECH_CODE,
-                                          /*gss_utils::GSS_API_KRB5_OID_PTR,*/
                                           const_cast<gss_OID>(&GSS_API_KRB5_OID_PTR),
                                           &gss_ctx_message, 
                                           &gss_str_status); 
@@ -84,5 +83,4 @@ std::string gss_auth_show_status(const OM_uint32 gss_major_status,
   }
   return str_status;
 }
-
 

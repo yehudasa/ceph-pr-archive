@@ -13,6 +13,7 @@ set(auth_srcs
   ldap_krb/KrbAuthorizeHandler.cpp
   ldap_krb/KrbClientHandler.cpp
   ldap_krb/KrbProtocol.cpp
+  ldap_krb/KrbSessionHandler.cpp
   none/AuthNoneAuthorizeHandler.cc
   unknown/AuthUnknownAuthorizeHandler.cc)
 
