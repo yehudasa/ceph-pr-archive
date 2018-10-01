@@ -244,7 +244,7 @@ int RGWBucketReshard::renew_lock_bucket()
   utime_t now = ceph_clock_now();
  /* do you need to renew lock? */
   if (now > lock_start_time + store->ctx()->_conf->rgw_reshard_bucket_lock_duration/ 2) {
-    reshard_lock.set_renew(true);
+    reshard_lock.set_must_renew(true);
     int ret = reshard_lock.lock_exclusive(&store->reshard_pool_ctx, reshard_oid);
     if (ret == -EBUSY) { /* already locked by another processor */
       ldout(store->ctx(), 5) << __func__ << "(): failed to acquire lock on " << reshard_oid << dendl;
@@ -892,7 +892,7 @@ int RGWReshard::process_single_logshard(int logshard_num)
       utime_t now = ceph_clock_now();
 
       if (now > lock_start_time + max_secs / 2) { /* do you need to renew lock? */
-        l.set_renew(true);
+        l.set_must_renew(true);
         ret = l.lock_exclusive(&store->reshard_pool_ctx, logshard_oid);
         if (ret == -EBUSY) { /* already locked by another processor */
           ldout(store->ctx(), 5) << __func__ << "(): failed to acquire lock on " << logshard_oid << dendl;
