@@ -1309,8 +1309,7 @@ bool compare_by_name(const child_info_t& c1, const child_info_t& c2)
   }
 
   int lock_break(ImageCtx *ictx, rbd_lock_mode_t lock_mode,
-                 const std::string &lock_owner)
-  {
+                 const std::string &lock_owner) {
     CephContext *cct = ictx->cct;
     ldout(cct, 20) << __func__ << ": ictx=" << ictx << ", "
                    << "lock_mode=" << lock_mode << ", "
@@ -1701,7 +1700,7 @@ bool compare_by_name(const child_info_t& c1, const child_info_t& c2)
       if (throttle.pending_error()) {
         return throttle.wait_for_ret();
       }
-      
+
       {
         RWLock::RLocker snap_locker(src->snap_lock);
         if (src->object_map != nullptr) {
@@ -1719,7 +1718,7 @@ bool compare_by_name(const child_info_t& c1, const child_info_t& c2)
         } else {
           object_id += src->stripe_count;
         }
-      }      
+      }
 
       uint64_t len = min(period, src_size - offset);
       bufferlist *bl = new bufferlist();
@@ -2180,4 +2179,3 @@ std::ostream &operator<<(std::ostream &os, const librbd::ImageOptions &opts) {
 
   return os;
 }
-
