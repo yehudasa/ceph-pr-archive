@@ -43,3 +43,4 @@ sensible.
     Orchestrator CLI plugin <orchestrator_cli>
     Rook plugin <rook>
     Insights plugin <insights>
+    Ansible orchestrator plugin <ansible_orchestrator>
