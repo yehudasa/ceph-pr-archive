@@ -166,6 +166,8 @@ BuildRequires:	liboath-devel
 BuildRequires:	libtool
 BuildRequires:	libxml2-devel
 BuildRequires:	libuuid-devel
+BuildRequires:	lttng-tools-devel
+BuildRequires:	lttng-ust-devel
 BuildRequires:	make
 BuildRequires:	parted
 BuildRequires:	perl
