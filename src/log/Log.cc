@@ -187,15 +187,8 @@ void Log::stop_graylog()
   m_graylog.reset();
 }
 
-<<<<<<< HEAD
-void Log::submit_entry(Entry&& e)
-=======
-void Log::submit_entry(Entry *e, bool logging_legacy)
->>>>>>> tracing: makre logging_legacy option control how we log
+void Log::submit_entry(Entry&& e, bool logging_legacy)
 {
-  // is this still necessary after rebase?
-  e->finish();
-
   if (!logging_legacy) {
 //    tracepoint(ceph_log, log_message, (char*)e->get_str().c_str());
     return;

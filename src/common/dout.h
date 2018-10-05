@@ -166,7 +166,7 @@ struct is_dynamic<dynamic_marker_t<T>> : public std::true_type {};
     bool __logging_legacy = cct->_conf->logging_legacy;
 
 #define dendl_impl std::flush;                                          \
-    _dout_cct->_log->submit_entry(std::move(_dout_e, __logging_legacy)); \
+    _dout_cct->_log->submit_entry(std::move(_dout_e), __logging_legacy); \
   }                                                                     \
   } while (0)
 #endif	// WITH_SEASTAR
