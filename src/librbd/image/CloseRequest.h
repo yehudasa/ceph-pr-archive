@@ -50,6 +50,9 @@ private:
    * FLUSH_READAHEAD
    *    |
    *    v
+   * SHUTDOWN_IMAGE_CACHE (skip if disabled)
+   *    |
+   *    v
    * SHUT_DOWN_OBJECT_DISPATCHER
    *    |
    *    v

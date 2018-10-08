@@ -52,6 +52,9 @@ private:
    *            V2_GET_STRIPE_UNIT_COUNT (skip if   |
    *                |                     disabled) |
    *                v                               |
+   *            V2_GET_IMAGE_CACHE_STATE (skip if   |
+   *                |                     disabled) |
+   *                v                               |
    *            V2_GET_CREATE_TIMESTAMP             |
    *                |                               |
    *                v                               |
@@ -69,6 +72,9 @@ private:
    *                                                v
    *                                             SET_SNAP (skip if no snap)
    *                                                |
+   *                                                v
+   *                                             INIT_IMAGE_CACHE (skip if
+   *                                                |              disabled)
    *                                                v
    *                                             <finish>
    *                                                ^
@@ -107,6 +113,9 @@ private:
 
   void send_v2_get_stripe_unit_count();
   Context *handle_v2_get_stripe_unit_count(int *result);
+
+  void send_v2_get_image_cache_state();
+  Context *handle_v2_get_image_cache_state(int *result);
 
   void send_v2_get_create_timestamp();
   Context *handle_v2_get_create_timestamp(int *result);

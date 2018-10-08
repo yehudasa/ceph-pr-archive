@@ -243,8 +243,7 @@ int ImageRequestWQ<I>::flush() {
   ldout(cct, 20) << "ictx=" << &m_image_ctx << dendl;
 
   C_SaferCond cond;
-  AioCompletion *c = AioCompletion::create(&cond);
-  aio_flush(c, false);
+  flush_image(m_image_ctx, &cond);
 
   int r = cond.wait();
   if (r < 0) {
@@ -584,7 +583,7 @@ void ImageRequestWQ<I>::wait_on_writes_unblocked(Context *on_unblocked) {
 template <typename I>
 void ImageRequestWQ<I>::set_require_lock(Direction direction, bool enabled) {
   CephContext *cct = m_image_ctx.cct;
-  ldout(cct, 20) << dendl;
+  ldout(cct, 20) << "direction: " << direction << " enabled: " << enabled << dendl;
 
   bool wake_up = false;
   {
