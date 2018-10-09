@@ -97,31 +97,31 @@ set(unittest_librbd_srcs
   trash/test_mock_MoveRequest.cc
   watcher/test_mock_RewatchRequest.cc
   )
-add_executable(unittest_librbd
-  ${unittest_librbd_srcs}
-  $<TARGET_OBJECTS:common_texttable_obj>)
-target_compile_definitions(unittest_librbd PRIVATE "TEST_LIBRBD_INTERNALS")
-target_link_libraries(unittest_librbd
-  cls_rbd
-  cls_rbd_client
-  cls_lock
-  cls_lock_client
-  journal
-  journal_test_mock
-  cls_journal
-  cls_journal_client
-  rados_test_stub
-  librados
-  rbd_test
-  rbd_test_mock
-  rbd_api
-  rbd_internal
-  rbd_types
-  osdc
-  ceph-common
-  global
-  ${UNITTEST_LIBS}
-  radostest)
+# add_executable(unittest_librbd
+#   ${unittest_librbd_srcs}
+#   $<TARGET_OBJECTS:common_texttable_obj>)
+# target_compile_definitions(unittest_librbd PRIVATE "TEST_LIBRBD_INTERNALS")
+# target_link_libraries(unittest_librbd
+#   cls_rbd
+#   cls_rbd_client
+#   cls_lock
+#   cls_lock_client
+#   journal
+#   journal_test_mock
+#   cls_journal
+#   cls_journal_client
+#   rados_test_stub
+#   librados
+#   rbd_test
+#   rbd_test_mock
+#   rbd_api
+#   rbd_internal
+#   rbd_types
+#   osdc
+#   ceph-common
+#   global
+#   ${UNITTEST_LIBS}
+#   radostest)
 
 add_executable(ceph_test_librbd
   test_main.cc
