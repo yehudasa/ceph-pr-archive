@@ -213,6 +213,9 @@ RGWBucketReshard::RGWBucketReshard(RGWRados *_store,
   const int lock_dur_secs =
     store->ctx()->_conf->rgw_reshard_bucket_lock_duration;
   lock_duration = std::chrono::seconds(lock_dur_secs);
+  lderr(store->ctx()) << "INFO: read lock duration as " << lock_dur_secs <<
+    " and " << lock_duration << dendl;
+
 
 #define COOKIE_LEN 16
   char cookie_buf[COOKIE_LEN + 1];
@@ -270,6 +273,7 @@ int RGWBucketReshard::renew_lock_bucket(const Clock::time_point& now)
   lock_renew_thresh = lock_start_time + lock_duration / 2;
   ldout(store->ctx(), 20) << __func__ << "(): successfully renewed lock on " <<
     reshard_oid << dendl;
+  lderr(store->ctx()) << "INFO: successfully renewed lock" << dendl;
 
   return 0;
 }
@@ -372,6 +376,7 @@ class BucketInfoReshardUpdate
       ldout(store->ctx(), 0) << "ERROR: failed to write bucket info, ret=" << ret << dendl;
       return ret;
     }
+    lderr(store->ctx()) << "INFO: succeeded in writing bucket info" << dendl;
     return 0;
   }
 

@@ -3757,7 +3757,13 @@ static int rgw_set_bucket_resharding(cls_method_context_t hctx, bufferlist *in, 
     return rc;
   }
 
-  header.new_instance.set_status(op.entry.new_bucket_instance_id, op.entry.num_shards, op.entry.reshard_status);
+#if 1
+  CLS_LOG(1, "DEBUGINFO: %s(): num_shards was %d will be %d\n",
+	  __func__, header.new_instance.num_shards, op.entry.num_shards);
+#endif
+
+  header.new_instance.set_status(op.entry.new_bucket_instance_id,
+				 op.entry.num_shards, op.entry.reshard_status);
 
   return write_bucket_header(hctx, &header);
 }
