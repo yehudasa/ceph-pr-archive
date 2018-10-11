@@ -36,7 +36,7 @@ Disable the module
     # ceph mgr module disable ansible-orchestrator
 
 
-Enable the Ansible orchestrator module and use it with the :ref:'CLI <orchestrator-cli-module>':
+Enable the Ansible orchestrator module and use it with the :ref:`CLI <orchestrator-cli-module>`:
 
 ::
 
