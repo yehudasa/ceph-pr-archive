@@ -48,7 +48,6 @@ KrbClientHandler::build_authorizer(uint32_t service_id) const
 
 KrbClientHandler::~KrbClientHandler() 
 {
-  OM_uint32 gss_major_status(0); 
   OM_uint32 gss_minor_status(0); 
 
   gss_release_name(&gss_minor_status, &m_gss_client_name);

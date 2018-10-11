@@ -153,14 +153,11 @@ int KrbServiceHandler::start_session(EntityName& name,
                                      bufferlist& buff_list,
                                      AuthCapsInfo& caps)
 {
-  auto result(0);
   gss_buffer_desc gss_buffer_in = {0, nullptr};
-  gss_name_t gss_client_name = GSS_C_NO_NAME;
   gss_OID gss_object_id = GSS_C_NT_HOSTBASED_SERVICE;
   gss_OID_set gss_mechs_wanted = GSS_C_NO_OID_SET;
   OM_uint32 gss_major_status(0); 
   OM_uint32 gss_minor_status(0);
-  OM_uint32 gss_result_flags(0);
   std::string gss_service_name(GSS_TARGET_DEFAULT_NAME);
 
   gss_buffer_in.length = GSS_TARGET_DEFAULT_NAME.length();
@@ -219,7 +216,6 @@ int KrbServiceHandler::start_session(EntityName& name,
 
 KrbServiceHandler::~KrbServiceHandler()
 {
-  OM_uint32 gss_major_status(0); 
   OM_uint32 gss_minor_status(0); 
 
   gss_release_name(&gss_minor_status, &m_gss_service_name);
