@@ -230,6 +230,22 @@ uint64_t PerfCounters::get(int idx) const
   return data.u64;
 }
 
+std::pair<uint64_t, uint64_t> PerfCounters::get_avg(int idx) const
+{
+  if (!m_cct->_conf->perf)
+    return make_pair(0, 0);
+
+  assert(idx > m_lower_bound);
+  assert(idx < m_upper_bound);
+  const perf_counter_data_any_d& data(m_data[idx - m_lower_bound - 1]);
+  if (!(data.type & PERFCOUNTER_U64))
+    return make_pair(0, 0);
+  if (!(data.type & PERFCOUNTER_LONGRUNAVG))
+    return make_pair(0, 0);
+
+  return data.read_avg();
+}
+
 void PerfCounters::tinc(int idx, utime_t amt)
 {
   if (!m_cct->_conf->perf)

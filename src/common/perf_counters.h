@@ -233,6 +233,7 @@ public:
   void dec(int idx, uint64_t v = 1);
   void set(int idx, uint64_t v);
   uint64_t get(int idx) const;
+  std::pair<uint64_t, uint64_t> get_avg(int idx) const;
 
   void tset(int idx, utime_t v);
   void tinc(int idx, utime_t v);

@@ -42,6 +42,7 @@
 #include <sys/un.h>
 #include <time.h>
 #include <unistd.h>
+#include <thread>
 
 #include "common/common_init.h"
 
@@ -218,4 +219,42 @@ TEST(PerfCounters, ResetPerfCounters) {
   coll->clear();
   ASSERT_EQ("", client.do_request("{ \"prefix\": \"perf reset\", \"var\": \"test_perfcounter_1\", \"format\": \"json\" }", &msg));
   ASSERT_EQ(sd("{\"error\":\"Not find: test_perfcounter_1\"}"), msg);
+}
+
+enum {
+  TEST_PERFCOUNTERS3_ELEMENT_FIRST = 400,
+  TEST_PERFCOUNTERS3_ELEMENT_READ,
+  TEST_PERFCOUNTERS3_ELEMENT_LAST,
+};
+
+static PerfCounters* setup_test_perfcounter3(CephContext* cct) {
+  PerfCountersBuilder bld(cct, "test_percounter_3",
+      TEST_PERFCOUNTERS3_ELEMENT_FIRST, TEST_PERFCOUNTERS3_ELEMENT_LAST);
+  bld.add_u64_avg(TEST_PERFCOUNTERS3_ELEMENT_READ, "read_avg");
+  return bld.create_perf_counters();
+}
+
+static void counters_inc_test(PerfCounters* fake_pf) {
+  int i = 10000;
+  while(i--) {
+    // increase by one, make sure data.u64 equal to data.avgcount
+    fake_pf->inc(TEST_PERFCOUNTERS3_ELEMENT_READ, 1);
+  }
+}
+
+static void counters_readavg_test(PerfCounters* fake_pf) {
+  int i = 10000;
+  while(i--) {
+    std::pair<uint64_t, uint64_t> dat = fake_pf->get_avg(TEST_PERFCOUNTERS3_ELEMENT_READ);
+    // if dat.first is not equal to dat.second, then we get a wrong data
+    ASSERT_EQ(dat.first, dat.second);
+  }
+}
+
+TEST(PerfCounters, read_avg) {
+  PerfCounters* fake_pf = setup_test_perfcounter3(g_ceph_context);
+  std::thread t1(counters_inc_test, fake_pf);
+  std::thread t2(counters_readavg_test, fake_pf);
+  t2.join();
+  t1.join();
 }
