@@ -5,7 +5,7 @@
 Ansible Orchestrator
 ====================
 
-This module is a `Ceph orchestrator <http://docs.ceph.com/docs/master/mgr/orchestrator_modules/>`_ module that uses `Ansible Runner Service <https://github.com/jmolmo/ansible-runner-service>`_ (a RESTful API server) to execute Ansible playbooks in order to satisfy the different operations supported.
+This module is a :ref:`Ceph orchestrator <orchestrator-modules>` module that uses `Ansible Runner Service <https://github.com/pcuzner/ansible-runner-service>`_ (a RESTful API server) to execute Ansible playbooks in order to satisfy the different operations supported.
 
 These operations basically (and for the moment) are:
 
@@ -29,16 +29,17 @@ Enable the module:
 
     # ceph mgr module enable ansible-orchestrator
 
-
-Get inventory of the cluster (nodes and storage devices):
-
-::
-
-    # ceph inventory
-
-
-Get the inventory of the cluster filtered:
+Disable the module
 
 ::
 
-    # ceph inventory filter=osd_node_*
+    # ceph mgr module disable ansible-orchestrator
+
+
+Enable the Ansible orchestrator module and use it with the :ref:'CLI <orchestrator-cli-module>':
+
+::
+
+    ceph mgr module enable orchestrator_cli
+    ceph mgr module enable ansible-orchestrator
+    ceph orchestrator set backend ansible-orchestrator
