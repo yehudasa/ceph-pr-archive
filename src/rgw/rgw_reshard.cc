@@ -219,7 +219,6 @@ RGWBucketReshard::RGWBucketReshard(RGWRados *_store,
   lderr(store->ctx()) << "INFO: read lock duration as " << lock_dur_secs <<
     " and " << lock_duration << dendl;
 
-
 #define COOKIE_LEN 16
   char cookie_buf[COOKIE_LEN + 1];
   gen_rand_alphanumeric(store->ctx(), cookie_buf, sizeof(cookie_buf) - 1);
@@ -641,6 +640,7 @@ int RGWBucketReshard::get_status(list<cls_rgw_bucket_instance_entry> *status)
   return 0;
 }
 
+
 int RGWBucketReshard::execute(int num_shards, int max_op_entries,
                               bool verbose, ostream *out, Formatter *formatter,
 			      RGWReshard* reshard_log)
@@ -856,7 +856,7 @@ int RGWReshardWait::block_while_resharding(RGWRados::BucketShard *bs, string *ne
   int ret = 0;
   cls_rgw_bucket_instance_entry entry;
 
-  for (int i=0; i < num_retries;i++) {
+  for (int i=0; i < num_retries; i++) {
     ret = cls_rgw_get_bucket_resharding(bs->index_ctx, bs->bucket_obj, &entry);
     if (ret < 0) {
       ldout(store->ctx(), 0) << __func__ << " ERROR: failed to get bucket resharding :"  <<

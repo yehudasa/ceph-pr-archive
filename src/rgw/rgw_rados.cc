@@ -9009,7 +9009,8 @@ int RGWRados::bucket_rebuild_index(RGWBucketInfo& bucket_info)
   return CLSRGWIssueBucketRebuild(index_ctx, bucket_objs, cct->_conf->rgw_bucket_index_max_aio)();
 }
 
-int RGWRados::bucket_set_reshard(RGWBucketInfo& bucket_info, const cls_rgw_bucket_instance_entry& entry)
+int RGWRados::bucket_set_reshard(RGWBucketInfo& bucket_info,
+				 const cls_rgw_bucket_instance_entry& entry)
 {
   librados::IoCtx index_ctx;
   map<int, string> bucket_objs;
