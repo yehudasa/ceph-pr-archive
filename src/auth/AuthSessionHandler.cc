@@ -15,7 +15,7 @@
 #include "common/debug.h"
 #include "AuthSessionHandler.h"
 #include "cephx/CephxSessionHandler.h"
-#include "ldap_krb/KrbSessionHandler.hpp"
+#include "krb/KrbSessionHandler.hpp"
 #include "none/AuthNoneSessionHandler.h"
 #include "unknown/AuthUnknownSessionHandler.h"
 

@@ -14,7 +14,7 @@
 
 #include "AuthAuthorizeHandler.h"
 #include "cephx/CephxAuthorizeHandler.h"
-#include "ldap_krb/KrbAuthorizeHandler.hpp"
+#include "krb/KrbAuthorizeHandler.hpp"
 #include "none/AuthNoneAuthorizeHandler.h"
 
 AuthAuthorizeHandler *AuthAuthorizeHandlerRegistry::get_handler(int protocol)

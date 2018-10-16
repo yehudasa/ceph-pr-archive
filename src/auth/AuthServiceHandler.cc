@@ -14,7 +14,7 @@
 
 #include "AuthServiceHandler.h"
 #include "cephx/CephxServiceHandler.h"
-#include "ldap_krb/KrbServiceHandler.hpp"
+#include "krb/KrbServiceHandler.hpp"
 #include "none/AuthNoneServiceHandler.h"
 
 #define dout_subsys ceph_subsys_auth

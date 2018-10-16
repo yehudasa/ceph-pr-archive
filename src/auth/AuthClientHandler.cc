@@ -17,7 +17,7 @@
 
 #include "AuthClientHandler.h"
 #include "cephx/CephxClientHandler.h"
-#include "ldap_krb/KrbClientHandler.hpp"
+#include "krb/KrbClientHandler.hpp"
 #include "none/AuthNoneClientHandler.h"
 
 
