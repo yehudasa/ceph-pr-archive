@@ -58,7 +58,8 @@
              [ngClass]="{'has-error': rbdForm.showError('pool', formDir)}"
              (change)="onPoolChange($event.target.value)">
           <label class="control-label col-sm-3"
-                 for="pool">
+                 for="pool"
+                 i18n>
             Pool
             <span class="required"
                   *ngIf="mode !== 'editing'"></span>
@@ -116,7 +117,8 @@
              [ngClass]="{'has-error': rbdForm.showError('dataPool', formDir)}"
              *ngIf="rbdForm.getValue('useDataPool')">
           <label class="control-label col-sm-3"
-                 for="dataPool">
+                 for="dataPool"
+                 i18n>
             Data pool
             <span class="required"
                   *ngIf="mode !== 'editing'"></span>
