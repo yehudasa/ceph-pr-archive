@@ -2134,6 +2134,7 @@ class RGWRados : public AdminSocketHook
   friend class RGWDataSyncProcessorThread;
   friend class RGWReshard;
   friend class RGWBucketReshard;
+  friend class RGWBucketReshardLock;
   friend class BucketIndexLockGuard;
   friend class RGWCompleteMultipart;
 

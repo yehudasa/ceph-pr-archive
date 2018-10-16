@@ -207,79 +207,9 @@ RGWBucketReshard::RGWBucketReshard(RGWRados *_store,
 				   const map<string, bufferlist>& _bucket_attrs,
 				   RenewLocksCallback _renew_locks_callback) :
   store(_store), bucket_info(_bucket_info), bucket_attrs(_bucket_attrs),
-  reshard_lock(reshard_lock_name),
+  reshard_lock(store, bucket_info),
   renew_locks_callback(_renew_locks_callback)
-{
-  const rgw_bucket& b = bucket_info.bucket;
-  reshard_oid = b.get_key(':');
-
-  const int lock_dur_secs =
-    store->ctx()->_conf->rgw_reshard_bucket_lock_duration;
-  lock_duration = std::chrono::seconds(lock_dur_secs);
-  lderr(store->ctx()) << "INFO: read lock duration as " << lock_dur_secs <<
-    " and " << lock_duration << dendl;
-
-#define COOKIE_LEN 16
-  char cookie_buf[COOKIE_LEN + 1];
-  gen_rand_alphanumeric(store->ctx(), cookie_buf, sizeof(cookie_buf) - 1);
-  cookie_buf[COOKIE_LEN] = '\0';
-
-  reshard_lock.set_cookie(cookie_buf);
-  reshard_lock.set_duration(lock_duration);
-}
-
-int RGWBucketReshard::lock_bucket()
-{
-  reshard_lock.set_must_renew(false);
-  int ret = reshard_lock.lock_exclusive_ephemeral(&store->reshard_pool_ctx,
-						  reshard_oid);
-  if (ret < 0) {
-    ldout(store->ctx(), 0) << "RGWReshard::add failed to acquire lock on " <<
-      reshard_oid << " ret=" << ret << dendl;
-    return ret;
-  }
-  lock_start_time = Clock::now();
-  lock_renew_thresh = lock_start_time + lock_duration / 2;
-
-  return 0;
-}
-
-void RGWBucketReshard::unlock_bucket()
-{
-  int ret = reshard_lock.unlock(&store->reshard_pool_ctx, reshard_oid);
-  if (ret < 0) {
-    ldout(store->ctx(), 0) << "WARNING: RGWReshard::add failed to drop lock on " << reshard_oid << " ret=" << ret << dendl;
-  }
-}
-
-int RGWBucketReshard::renew_lock_bucket(const Clock::time_point& now)
-{
-  // assume outer locks have timespans at least the size of ours, so
-  // can call inside conditional
-  if (renew_locks_callback) {
-    int ret = renew_locks_callback(now);
-    if (ret < 0) {
-      return ret;
-    }
-  }
-
-  reshard_lock.set_must_renew(true);
-  int ret = reshard_lock.lock_exclusive_ephemeral(&store->reshard_pool_ctx,
-						  reshard_oid);
-  if (ret < 0) { /* expired or already locked by another processor */
-    ldout(store->ctx(), 5) << __func__ << "(): failed to renew lock on " <<
-      reshard_oid << " with " << cpp_strerror(-ret) << dendl;
-    return ret;
-  }
-  reshard_lock.set_must_renew(false);
-  lock_start_time = now;
-  lock_renew_thresh = lock_start_time + lock_duration / 2;
-  ldout(store->ctx(), 20) << __func__ << "(): successfully renewed lock on " <<
-    reshard_oid << dendl;
-  lderr(store->ctx()) << "INFO: successfully renewed lock" << dendl;
-
-  return 0;
-}
+{ }
 
 int RGWBucketReshard::set_resharding_status(RGWRados* store,
 					    RGWBucketInfo& bucket_info,
@@ -388,14 +318,14 @@ int RGWBucketReshard::create_new_bucket_instance(int new_num_shards,
 
 int RGWBucketReshard::cancel()
 {
-  int ret = lock_bucket();
+  int ret = reshard_lock.lock_bucket();
   if (ret < 0) {
     return ret;
   }
 
   ret = clear_resharding();
 
-  unlock_bucket();
+  reshard_lock.unlock_bucket();
   return ret;
 }
 
@@ -461,6 +391,69 @@ public:
     return 0;
   }
 };
+
+
+RGWBucketReshardLock::RGWBucketReshardLock(RGWRados* _store,
+					   const RGWBucketInfo& bucket_info) :
+  store(_store),
+  reshard_oid(bucket_info.bucket.get_key(':')),
+  lock(reshard_lock_name)
+{
+  const int lock_dur_secs = store->ctx()->_conf->rgw_reshard_bucket_lock_duration;
+  duration = std::chrono::seconds(lock_dur_secs);
+
+#define COOKIE_LEN 16
+  char cookie_buf[COOKIE_LEN + 1];
+  gen_rand_alphanumeric(store->ctx(), cookie_buf, sizeof(cookie_buf) - 1);
+  cookie_buf[COOKIE_LEN] = '\0';
+
+  lock.set_cookie(cookie_buf);
+  lock.set_duration(duration);
+}
+
+RGWBucketReshardLock::~RGWBucketReshardLock() {}
+
+int RGWBucketReshardLock::lock_bucket() {
+  lock.set_must_renew(false);
+  int ret = lock.lock_exclusive_ephemeral(&store->reshard_pool_ctx, reshard_oid);
+  if (ret < 0) {
+    ldout(store->ctx(), 0) << "RGWReshardLock::" << __func__ <<
+      " failed to acquire lock on " <<
+      reshard_oid << " ret=" << ret << dendl;
+    return ret;
+  }
+  reset_time(Clock::now());
+
+  return 0;
+}
+
+void RGWBucketReshardLock::unlock_bucket() {
+  int ret = lock.unlock(&store->reshard_pool_ctx, reshard_oid);
+  if (ret < 0) {
+    ldout(store->ctx(), 0) << "WARNING: RGWBucketReshardLock::" << __func__ <<
+      " failed to drop lock on " << reshard_oid << " ret=" << ret << dendl;
+  }
+}
+
+int RGWBucketReshardLock::renew_lock_bucket(const Clock::time_point& now) {
+  lock.set_must_renew(true);
+  int ret = lock.lock_exclusive_ephemeral(&store->reshard_pool_ctx,
+					  reshard_oid);
+  if (ret < 0) { /* expired or already locked by another processor */
+    ldout(store->ctx(), 5) << __func__ << "(): failed to renew lock on " <<
+      reshard_oid << " with " << cpp_strerror(-ret) << dendl;
+    return ret;
+  }
+  lock.set_must_renew(false);
+
+  reset_time(now);
+  ldout(store->ctx(), 20) << __func__ << "(): successfully renewed lock on " <<
+    reshard_oid << dendl;
+  lderr(store->ctx()) << "INFO: successfully renewed lock" << dendl;
+
+  return 0;
+}
+
 
 int RGWBucketReshard::do_reshard(int num_shards,
 				 RGWBucketInfo& new_bucket_info,
@@ -565,8 +558,16 @@ int RGWBucketReshard::do_reshard(int num_shards,
 	}
 
 	Clock::time_point now = Clock::now();
-	if (now >= lock_renew_thresh) {
-	  ret = renew_lock_bucket(now);
+	if (reshard_lock.should_renew(now)) {
+	  // assume outer locks have timespans at least the size of ours, so
+	  // can call inside conditional
+	  if (renew_locks_callback) {
+	    ret = renew_locks_callback(now);
+	    if (ret < 0) {
+	      return ret;
+	    }
+	  }
+	  ret = reshard_lock.renew_lock_bucket(now);
 	  if (ret < 0) {
 	    lderr(store->ctx()) << "Error renewing bucket lock: " << ret << dendl;
 	    return ret;
@@ -645,7 +646,7 @@ int RGWBucketReshard::execute(int num_shards, int max_op_entries,
                               bool verbose, ostream *out, Formatter *formatter,
 			      RGWReshard* reshard_log)
 {
-  int ret = lock_bucket();
+  int ret = reshard_lock.lock_bucket();
   if (ret < 0) {
     return ret;
   }
@@ -653,21 +654,22 @@ int RGWBucketReshard::execute(int num_shards, int max_op_entries,
   RGWBucketInfo new_bucket_info;
   ret = create_new_bucket_instance(num_shards, new_bucket_info);
   if (ret < 0) {
-    unlock_bucket();
+    reshard_lock.unlock_bucket();
     return ret;
   }
 
   if (reshard_log) {
     ret = reshard_log->update(bucket_info, new_bucket_info);
     if (ret < 0) {
-      unlock_bucket();
+      reshard_lock.unlock_bucket();
       return ret;
     }
   }
 
-  ret = set_resharding_status(new_bucket_info.bucket.bucket_id, num_shards, CLS_RGW_RESHARD_IN_PROGRESS);
+  ret = set_resharding_status(new_bucket_info.bucket.bucket_id,
+			      num_shards, CLS_RGW_RESHARD_IN_PROGRESS);
   if (ret < 0) {
-    unlock_bucket();
+    reshard_lock.unlock_bucket();
     return ret;
   }
 
@@ -677,17 +679,18 @@ int RGWBucketReshard::execute(int num_shards, int max_op_entries,
                    verbose, out, formatter);
 
   if (ret < 0) {
-    unlock_bucket();
+    reshard_lock.unlock_bucket();
     return ret;
   }
 
-  ret = set_resharding_status(new_bucket_info.bucket.bucket_id, num_shards, CLS_RGW_RESHARD_DONE);
+  ret = set_resharding_status(new_bucket_info.bucket.bucket_id, num_shards,
+			      CLS_RGW_RESHARD_DONE);
   if (ret < 0) {
-    unlock_bucket();
+    reshard_lock.unlock_bucket();
     return ret;
   }
 
-  unlock_bucket();
+  reshard_lock.unlock_bucket();
 
   return 0;
 }

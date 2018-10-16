@@ -17,6 +17,35 @@
 class CephContext;
 class RGWRados;
 
+class RGWBucketReshardLock {
+  using Clock = ceph::coarse_mono_clock;
+
+  RGWRados* store;
+  const std::string reshard_oid;
+  rados::cls::lock::Lock lock;
+  std::chrono::seconds duration;
+
+  Clock::time_point start_time;
+  Clock::time_point renew_thresh;
+
+  void reset_time(const Clock::time_point& now) {
+    start_time = now;
+    renew_thresh = start_time + duration / 2;
+  }
+
+public:
+  RGWBucketReshardLock(RGWRados* _store, const RGWBucketInfo& bucket_info);
+  ~RGWBucketReshardLock();
+
+  int lock_bucket();
+  void unlock_bucket();
+  int renew_lock_bucket(const Clock::time_point&);
+
+  bool should_renew(const Clock::time_point& now) const {
+    return now >= renew_thresh;
+  }
+}; // class RGWBucketReshardLock
+
 class RGWBucketReshard {
 public:
 
@@ -33,17 +62,9 @@ private:
   RGWBucketInfo bucket_info;
   std::map<string, bufferlist> bucket_attrs;
 
-  string reshard_oid;
-  rados::cls::lock::Lock reshard_lock;
-  Clock::time_point lock_start_time;
-  std::chrono::seconds lock_duration;
-  Clock::time_point lock_renew_thresh;
-
+  RGWBucketReshardLock reshard_lock;
   RenewLocksCallback renew_locks_callback;
 
-  int lock_bucket();
-  void unlock_bucket();
-  int renew_lock_bucket(const Clock::time_point&);
   int clear_resharding();
 
   int create_new_bucket_instance(int new_num_shards, RGWBucketInfo& new_bucket_info);
