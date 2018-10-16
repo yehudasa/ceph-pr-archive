@@ -1176,7 +1176,7 @@ class RBD(object):
         :param threshold: percentage of pool usage to be met (0 to 1)
         :type threshold: float
         """
-        as_time_t = int((expire_ts - datetime.utcfromtimestamp(0)).to_seconds())
+        as_time_t = int((expire_ts - datetime.utcfromtimestamp(0)).total_seconds())
         cdef:
             rados_ioctx_t _ioctx = convert_ioctx(ioctx)
             float _threshold = threshold
