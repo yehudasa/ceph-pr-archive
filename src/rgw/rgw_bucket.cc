@@ -12,6 +12,7 @@
 
 #include "common/errno.h"
 #include "common/ceph_json.h"
+#include "include/scope_guard.h"
 #include "rgw_rados.h"
 #include "rgw_acl.h"
 #include "rgw_acl_s3.h"
@@ -25,7 +26,7 @@
 #include "include/rados/librados.hpp"
 // until everything is moved from rgw_common
 #include "rgw_common.h"
-
+#include "rgw_reshard.h"
 #include "cls/user/cls_user_types.h"
 
 #define dout_context g_ceph_context
@@ -1673,68 +1674,117 @@ static int purge_bucket_instance(RGWRados *store, const RGWBucketInfo& bucket_in
   return 0;
 }
 
-static bool is_stale_instance(RGWRados *store, const std::string& bucket_instance,
-			      RGWBucketInfo& bucket_info)
+inline auto split_tenant(const std::string& bucket_name){
+  if(auto p = bucket_name.find('/'); p != std::string::npos){
+    return std::make_pair(bucket_name.substr(0,p), bucket_name.substr(p+1));
+  }
+  return std::make_pair(std::string(), bucket_name);
+}
+using bucket_instance_ls = std::vector<RGWBucketInfo>;
+auto get_stale_instances(RGWRados *store, const std::string& bucket_name,
+                         const vector<std::string>& lst) -> bucket_instance_ls
 {
-  RGWObjectCtx obj_ctx(store);
-  int r = store->get_bucket_instance_info(obj_ctx, bucket_instance,
-					  bucket_info, nullptr,nullptr);
+  RGWObjectCtx obj_ctx{store};
 
-  if (r < 0){
-    cerr << "Bucket instance is invalid!" << bucket_instance
-	 << cpp_strerror(-r) << std::endl;
-    return false;
+  bucket_instance_ls stale_instances;
+  bucket_instance_ls other_instances;
+
+// first iterate over the entries, and pick up the done buckets; these
+// are guaranteed to be stale
+  for (const auto& bucket_instance : lst){
+    RGWBucketInfo binfo;
+    int r = store->get_bucket_instance_info(obj_ctx, bucket_instance,
+                                            binfo, nullptr,nullptr);
+    if (r < 0){
+      // this can only happen if someone deletes us right when we're processing
+      lderr(store->ctx()) << "Bucket instance is invalid: " << bucket_instance
+                          << cpp_strerror(-r) << dendl;
+      continue;
+    }
+    if (binfo.reshard_status == CLS_RGW_RESHARD_DONE)
+      stale_instances.emplace_back(std::move(binfo));
+    else {
+      other_instances.emplace_back(std::move(binfo));
+    }
   }
 
-  if (bucket_info.reshard_status == CLS_RGW_RESHARD_DONE)
-    return true;
-  else if(bucket_info.reshard_status == CLS_RGW_RESHARD_IN_PROGRESS)
-    return false;
-
+  // Read the cur bucket info, if the bucket doesn't exist we can simply return
+  // all the instances
+  auto [tenant, bucket] = split_tenant(bucket_name);
   RGWBucketInfo cur_bucket_info;
-  rgw_bucket b;
-  int _;
-  rgw_bucket_parse_bucket_key(store->ctx(), bucket_instance, &b, &_);
-  r = store->get_bucket_info(obj_ctx, b.tenant, b.name, cur_bucket_info, nullptr);
-
-  if (cur_bucket_info.reshard_status == CLS_RGW_RESHARD_IN_PROGRESS &&
-      cur_bucket_info.new_bucket_instance_id == b.bucket_id)
-    return false;
-
+  int r = store->get_bucket_info(obj_ctx, tenant, bucket, cur_bucket_info, nullptr);
+  if (r < 0) {
+    if (r == -ENOENT) {
+      // bucket doesn't exist, everything is stale then
+      stale_instances.insert(std::end(stale_instances),
+                             std::make_move_iterator(other_instances.begin()),
+                             std::make_move_iterator(other_instances.end()));
+    } else {
+      // all bets are off if we can't read the bucket, just return the sureshot stale instances
+      lderr(store->ctx()) << "error: reading bucket info for bucket"
+                          << bucket << cpp_strerror(-r) << dendl;
+    }
+    return stale_instances;
+  }
   RGWBucketEntryPoint ep;
-  r = store->get_bucket_entrypoint_info(obj_ctx, b.tenant,
-					b.name, ep, nullptr, nullptr, nullptr);
-  return (ep.bucket.bucket_id != b.bucket_id);
+  r = store->get_bucket_entrypoint_info(obj_ctx, tenant, bucket, ep,
+                                        nullptr, nullptr, nullptr);
+
+  if(r < 0) {
+    lderr(store->ctx()) << "error reading bucket entry point info for "
+                        << bucket << cpp_strerror(-r) << dendl;
+    return stale_instances;
+  }
+  other_instances.erase(std::remove_if(other_instances.begin(), other_instances.end(),
+                                       [&cur_bucket_info, &ep](const RGWBucketInfo& b){
+                                         return (b.bucket.bucket_id == ep.bucket.bucket_id ||
+                                                 b.bucket.bucket_id == cur_bucket_info.new_bucket_instance_id);
+                                       }),
+                        other_instances.end());
+
+  // if the history is clean or bucket is under reshard, don't process further
+  // in this round
+  if (other_instances.empty() ||
+      cur_bucket_info.reshard_status == CLS_RGW_RESHARD_IN_PROGRESS){
+    return stale_instances;
+  }
+
+  // Now we have a bucket with instances where the reshard status is none, this
+  // usually happens when the reshard process couldn't complete, lockdown the
+  // bucket and walk through these instances to make sure no one else interferes
+  // with these
+  {
+    RGWBucketReshardLock reshard_lock(store, cur_bucket_info);
+    r = reshard_lock.lock_bucket();
+    if (r < 0) {
+      // most likely bucket is under reshard, return the sureshot stale instances
+      ldout(store->ctx(), 10) << __func__
+                              << "failed to take reshard lock; reshard underway likey" << dendl;
+      return stale_instances;
+    }
+    auto sg = make_scope_guard([&reshard_lock](){ reshard_lock.unlock_bucket();} );
+    // this should be fast enough that we may not need to renew locks, should we
+    // read the values of the instances again?
+    stale_instances.insert(std::end(stale_instances),
+                           std::make_move_iterator(other_instances.begin()),
+                           std::make_move_iterator(other_instances.end()));
+  }
+
+  return stale_instances;
 }
 
-
-using bucket_instance_list_t = std::list<std::string>;
 static int process_stale_instances(RGWRados *store, RGWBucketAdminOpState& op_state,
-				   RGWFormatterFlusher& flusher,
-				   std::function<void(const RGWBucketInfo&,
-						      Formatter *,
-						      RGWRados*)> process_f)
+                                   RGWFormatterFlusher& flusher,
+                                   std::function<void(const bucket_instance_ls&,
+                                                      Formatter *,
+                                                      RGWRados*)> process_f)
 {
   std::string marker;
   void *handle;
   Formatter *formatter = flusher.get_formatter();
   static constexpr auto default_max_keys = 1000;
-  int ret;
 
-#if 0
-  const auto bucket_name = op_state.get_bucket_name();
-  if (!bucket_name.empty()){
-    // TODO: implement me, marker needs to be ObjectCursor
-    // findout what can convert an oid into this
-    RGWObjectCtx obj_ctx(store);
-    RGWBucketEntryPoint ep;
-    ret = store->get_bucket_entrypoint_info(obj_ctx, op_state.get_user_id().tenant,
-					    bucket_name, ep, nullptr, nullptr, nullptr);
-    marker = bucket_name + ":" + ep.bucket.bucket_id;
-  }
-#endif
-
-  ret = store->meta_mgr->list_keys_init("bucket.instance", marker, &handle);
+  int ret = store->meta_mgr->list_keys_init("bucket.instance", marker, &handle);
   if (ret < 0) {
     cerr << "ERROR: can't get key: " << cpp_strerror(-ret) << std::endl;
     return -ret;
@@ -1745,18 +1795,23 @@ static int process_stale_instances(RGWRados *store, RGWBucketAdminOpState& op_st
   formatter->open_array_section("keys");
 
   do {
-    bucket_instance_list_t keys;
+    list<std::string> keys;
 
     ret = store->meta_mgr->list_keys_next(handle, default_max_keys, keys, &truncated);
     if (ret < 0 && ret != -ENOENT) {
       cerr << "ERROR: lists_keys_next(): " << cpp_strerror(-ret) << std::endl;
       return -ret;
     } if (ret != -ENOENT) {
-      for (const auto& iter: keys) {
-	RGWBucketInfo bucket_info;
-	if (is_stale_instance(store, iter, bucket_info)){
-	  process_f(bucket_info, formatter, store);
-	}
+      // partition the list of buckets by buckets as the listing is un sorted,
+      // since it would minimize the reads to bucket_info
+      std::unordered_map<std::string, std::vector<std::string>> bucket_instance_map;
+      for (auto &key: keys) {
+        if(auto pos = key.find(':'); pos != std::string::npos)
+          bucket_instance_map[key.substr(0,pos)].emplace_back(std::move(key));
+      }
+      for (const auto& kv: bucket_instance_map) {
+        auto lst = get_stale_instances(store, kv.first, kv.second);
+        process_f(lst, formatter, store);
       }
     }
   } while (truncated);
@@ -1767,31 +1822,38 @@ static int process_stale_instances(RGWRados *store, RGWBucketAdminOpState& op_st
 }
 
 int RGWBucketAdminOp::list_stale_instances(RGWRados *store,
-					   RGWBucketAdminOpState& op_state,
-					   RGWFormatterFlusher& flusher)
+                                           RGWBucketAdminOpState& op_state,
+                                           RGWFormatterFlusher& flusher)
 {
-  auto process_f = [](const RGWBucketInfo& binfo,
-		      Formatter *formatter,
-		      RGWRados*){
-		     formatter->dump_string("key", binfo.bucket.bucket_id);
-		   };
+  auto process_f = [](const bucket_instance_ls& lst,
+                      Formatter *formatter,
+                      RGWRados*){
+                     for (const auto& binfo: lst)
+                       formatter->dump_string("key", binfo.bucket.get_key());
+                   };
   return process_stale_instances(store, op_state, flusher, process_f);
 }
 
 
 int RGWBucketAdminOp::clear_stale_instances(RGWRados *store,
-					    RGWBucketAdminOpState& op_state,
-					    RGWFormatterFlusher& flusher)
+                                            RGWBucketAdminOpState& op_state,
+                                            RGWFormatterFlusher& flusher)
 {
-  auto process_f = [](const RGWBucketInfo& binfo,
-		      Formatter *formatter,
-		      RGWRados *store){
-		     int ret = purge_bucket_instance(store, binfo);
-		     formatter->open_object_section("delete_status");
-		     formatter->dump_string("bucket_instance", binfo.bucket.bucket_id);
-		     formatter->dump_int("status", ret);
-		     formatter->close_section();
-		   };
+  auto process_f = [](const bucket_instance_ls& lst,
+                      Formatter *formatter,
+                      RGWRados *store){
+                     for (const auto &binfo: lst) {
+                       int ret = purge_bucket_instance(store, binfo);
+                       if (ret == 0){
+                         auto md_key = "bucket.instance:" + binfo.bucket.get_key();
+                         ret = store->meta_mgr->remove(md_key);
+                       }
+                       formatter->open_object_section("delete_status");
+                       formatter->dump_string("bucket_instance", binfo.bucket.get_key());
+                       formatter->dump_int("status", ret);
+                       formatter->close_section();
+                     }
+                   };
 
   return process_stale_instances(store, op_state, flusher, process_f);
 }
