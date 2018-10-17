@@ -919,10 +919,26 @@ void Server::find_idle_sessions()
     std::vector<Session*> new_stale;
 
     for (auto session : *(sessions_p1->second)) {
+      client_t client = session->get_client();
       auto last_cap_renew_span = std::chrono::duration<double>(now - session->last_cap_renew).count();
+
       if (last_cap_renew_span < cutoff) {
 	dout(20) << "laggiest active session is " << session->info.inst
 		 << " and renewed caps recently (" << last_cap_renew_span << "s ago)" << dendl;
+	continue;
+      } else if (last_cap_renew_span < mds->mdsmap->get_session_timeout()) {
+	continue;
+      } else if (last_cap_renew_span < mds->mdsmap->get_session_autoclose()
+		 and not (mds->locker->is_revoking_any_caps_from(client) or
+		 session->is_any_flush_waiter())) {
+	dout(20) << "deferring marking session " << client.v << " stale "
+		    "since it holds no caps" << dendl;
+	  continue;
+      } else {
+	dout(20) << "evicting session " << client.v << " since autoclose "
+		   "has arrived" << dendl;
+	to_evict.push_back(session);
+
 	continue;
       }
 
