@@ -1,129 +1,126 @@
 """
 ceph-mgr Ansible orchestrator module
 
-The external Orchestrator is the Ansible runner service (RESTful http service)
+The external Orchestrator is the Ansible runner service (RESTful https service)
 """
 
 # Python stuff
 from threading import Event
 import errno
+import json
 
 # Ceph stuff
 from mgr_module import MgrModule
 import orchestrator
 
 # Orchestrator stuff
-# An agent is used to communicate with the Ansible Runner service
-from ansible_runner_svc import Agent, ExecutionStatusCode
+# A Client is used to communicate with the Ansible Runner service
+from ansible_runner_svc import Client, PlayBookExecution, ExecutionStatusCode,\
+                               EVENT_DATA_URL
 
 # Constants section
 
 # Time to clean the completions list
 WAIT_PERIOD = 10
 
-class AnsibleOperation(object):
-    """Execution of playbooks using Ansible runner service
 
-    Each Ansible playboks will be executed in a separated thread using a
-    ansible_runner_svc.Agent object
+# List of playbooks names used
+GET_INVENTORY_PLAYBOOK = "probe-disks.yml"
+
+class AnsibleReadOperation(orchestrator.ReadCompletion):
+    """ A read operation means to obtain information from the cluster.
     """
 
-    def __init__(self):
+    def __init__(self, client, playbook, logger, result_pattern, params):
+        super(AnsibleReadOperation, self).__init__()
 
-        # This class is designed to be used as parent class
-        # in other multi-inheritance classes
-        # Althougth this is a base class, this prevents to break the chain of
-        #  initializations in child classes
-        super(AnsibleOperation, self).__init__()
 
-        self.callback_called = False
+        # Private attributes
+        self.playbook = playbook
+        self._is_complete = False
+        self._is_errored = False
+        self._result = []
 
-        # Used to provide the Code of Ansible playbook execution status
-        self._status = ExecutionStatusCode.NOT_INIT
+        # Error description in operation
+        self.error = ""
 
-        # Used to know if the operation has failed
-        self.error = False
+        # Ansible Runner Service client
+        self.ar_client = client
+
+        # Logger
+        self.log = logger
+
+        # An aditional filter of result events based in the event
+        self.event_filter = ""
 
         # Function assigned dinamically to process the result
         self.process_output = None
 
-        # The usable result (string output) of the Ansible Playbook
-        self.result = None
+        # Playbook execution object
+        self.pb_execution = PlayBookExecution(client,
+                                              playbook,
+                                              logger,
+                                              result_pattern,
+                                              params)
 
-        # All the operations are executed using an Ansible Runner Agent
-        self.ar_agent = Agent("localhost", "admin:admin")
+    @property
+    def is_complete(self):
+        return self._is_complete
+
+    @property
+    def is_errored(self):
+        return self._is_errored
+
+    @property
+    def result(self):
+        return self._result
 
     @property
     def status(self):
         """Return the status code of the operation
+        updating conceptually 'linked' attributes
         """
-        return self._status
+        current_status = self.pb_execution.get_status()
 
-    def execute_playbook(self, playbook_name, the_params):
+        self._is_complete = (current_status == ExecutionStatusCode.SUCCESS) or \
+                            (current_status == ExecutionStatusCode.ERROR)
+
+        self._is_errored = (current_status == ExecutionStatusCode.ERROR)
+
+        return current_status
+
+    def execute_playbook(self):
         """Execute the playbook with the provided params.
-        Use and Ansible runner service agent to launch th operation and provide
-        the callback function that will be used when the playbook execution
-        finishes
-
-        @param string playbook_name: the playbook to execute
-        @param list the_params     : The params needed to execute the playbook
         """
 
-        # Launch the execution using Ansible Runner service
-        self.ar_agent.launch(playbook_name, the_params, self.cb_playbook_finished)
+        self.pb_execution.launch()
 
-
-    def cb_playbook_finished(self, pb_result):
-        """Callback function used when a playbook has been executed.
-        Update instance attributes with the playbook execution result obtained
-        from the Ansible runner service though the Agent
-
-        @param object pb_result:  ansible_runner_svc.PlayBookExecution instance
-        """
-
-        self.result = pb_result.result
-        self.error = (pb_result.status != ExecutionStatusCode.ERROR)
-        self._status = pb_result.status
-        self.callback_called = True
-
-
-class AnsibleReadOperation(AnsibleOperation, orchestrator.ReadCompletion):
-    """ A read operation means to obtain information from the cluster.
-    """
-
-    def __init__(self):
-        super(AnsibleReadOperation, self).__init__()
-        self.error = False
-
-    @property
-    def is_read(self):
-        return self.result != None
-
-    @property
-    def is_complete(self):
-        return self.callback_called
-
-    @property
-    def is_errored(self):
-        return self.error
-
-    def get_result(self):
+    def update_result(self):
         """Output of the read operation
 
         The result of the playbook execution can be customized through the
         function provided as 'process_output' attribute
+
         @return string: Result of the operation formatted if it is possible
         """
 
-        if self.process_output:
-            formatted_result = self.process_output(self.result)
-        else:
-            formatted_result = self.result
+        processed_result = []
 
-        return formatted_result
+        if self._is_complete:
+            raw_result = self.pb_execution.get_result(self.event_filter)
+
+            if self.process_output:
+                processed_result = self.process_output(
+                                            raw_result,
+                                            self.ar_client,
+                                            self.pb_execution.play_uuid)
+            else:
+                processed_result = raw_result
+
+        self._result = processed_result
 
 
-class AnsibleChangeOperation(AnsibleOperation, orchestrator.WriteCompletion):
+class AnsibleChangeOperation(orchestrator.WriteCompletion):
     """Operations that changes the "cluster" state
 
     Modifications/Changes (writes) are a two-phase thing, firstly execute
@@ -133,6 +130,14 @@ class AnsibleChangeOperation(AnsibleOperation, orchestrator.WriteCompletion):
     """
     def __init__(self):
         super(AnsibleChangeOperation, self).__init__()
+
+        self.error = False
+    @property
+    def status(self):
+        """Return the status code of the operation
+        """
+        #TODO
+        return 0
 
     @property
     def is_persistent(self):
@@ -161,7 +166,7 @@ class AnsibleChangeOperation(AnsibleOperation, orchestrator.WriteCompletion):
         @return Boolean: if the playbook has been executed succesfully
         """
 
-        return self.callback_called and self.status == "successful"
+        return self.status == ExecutionStatusCode.SUCCESS
 
     @property
     def is_errored(self):
@@ -177,15 +182,13 @@ class Module(MgrModule, orchestrator.Orchestrator):
     operations
     """
 
-    COMMANDS = [
-        {
-            "cmd" : "inventory name=filter,type=CephString,req=false",
-            "desc": "Show the nodes and devices in the cluster," \
-                    "a filter string can be used to reduce output",
-            "perm": "r"
-        },
+    OPTIONS = [
+        {'name': 'server_addr'},
+        {'name': 'server_port'},
+        {'name': 'username'},
+        {'name': 'password'},
+        {'name': 'certificate'}  # Ansible runner https server certificate file
     ]
-
 
     def __init__(self, *args, **kwargs):
         """
@@ -196,30 +199,7 @@ class Module(MgrModule, orchestrator.Orchestrator):
 
         self.all_completions = []
 
-        self.event = Event()
-
-    def handle_command(self, inbuf, cmd):
-        """Called by ceph-mgr to request the plugin to handle one
-        of the commands that it declared in self.COMMANDS
-
-        @param string inbuf: content of any "-i <file>" supplied to ceph cli
-        @param dict command: from Ceph's cmdmap_t
-
-        @return: 3-tuple of (int: status code,
-                             str: output buffer <data results>,
-                             str: output string <informative text>)
-        """
-
-        if cmd['prefix'] == 'inventory':
-            the_filter = cmd['filter'] if 'filter' in cmd else ''
-            operation = self.get_inventory(the_filter)
-            result = (operation.status, operation.get_result(),
-                      operation.result)
-        else:
-            result = (-errno.EINVAL, '',
-                      "Command not found '{0}'".format(cmd['prefix']))
-
-        return result
+        self.ar_client = None
 
     def available(self):
         """ Check if Ansible Runner service is working
@@ -227,41 +207,56 @@ class Module(MgrModule, orchestrator.Orchestrator):
         # TODO
         return (True, "Everything ready")
 
-    def wait(self, completions=None):
+    def wait(self, completions):
         """Given a list of Completion instances, progress any which are
            incomplete.
 
            @param completions: list of Completion instances
-           @Returns          : True if everything is done.
+           @Returns          : List with completions operations pending
         """
 
-        # TODO: Manage external completions
+        # Check progress and update status in each operation
+        for operation in completions:
+            self.log.info("playbook <%s> status:%s", operation.playbook, operation.status)
+            if operation.is_complete:
+                operation.update_result()
 
-        self.all_completions = filter(lambda x: not x.is_complete,
-                                      self.all_completions)
+        completions = filter(lambda x: not x.is_complete, completions)
 
-        return len(self.all_completions) == 0
+        self.log.info("Operations pending: %s", len(completions))
+
+        return completions
 
     def serve(self):
         """ Mandatory for standby modules
         """
         self.log.info("Starting Ansible Orchestrator module ...")
+
+        # Verify config options (just that we have data)
+        self.verify_config()
+
+        # Ansible runner service client
+        self.ar_client = Client(server = self.get_config('server_addr', ''),
+                                port = self.get_config('server_port', ''),
+                                user = self.get_config('username', ''),
+                                password = self.get_config('password', ''),
+                                certificate = self.get_config('certificate', ''),
+                                logger = self.log)
+
+        if not self.ar_client.is_operative():
+            self.log.error("Ansible Runner Service not available. "
+                          "Check external server status or connection options. "
+                          "If configuration options changed try to "
+                          "disable/enable the module.")
+            self.shutdown()
+            return
+
+
         self.run = True
-
-        while self.run:
-            # Periodic clean of completed operations
-            if self.wait():
-                self.log.info("No pending operations")
-            else:
-                self.log.info("%s operations pending",
-                              len(self.all_completions))
-
-            self.event.wait(timeout=WAIT_PERIOD)
 
     def shutdown(self):
         self.log.info('Stopping Ansible orchestrator module')
         self.run = False
-        self.event.set()
 
     def get_inventory(self, node_filter=None):
         """
@@ -270,31 +265,100 @@ class Module(MgrModule, orchestrator.Orchestrator):
         @Return  :	A AnsibleReadOperation instance (Completion Object)
         """
 
-        # Create a new read completion object
-        ansible_operation = AnsibleReadOperation()
+        # Create a new read completion object for execute the playbook
+        ansible_operation = AnsibleReadOperation(client = self.ar_client,
+                                                 playbook = GET_INVENTORY_PLAYBOOK,
+                                                 logger = self.log,
+                                                 result_pattern = "RESULTS",
+                                                 params = "{}")
 
         # Assing the process_output function
         ansible_operation.process_output = process_inventary_json
+        ansible_operation.event_filter = "runner_on_ok"
 
         # Execute the playbook to obtain data
-        ansible_operation.execute_playbook("get_inventory", {})
+        ansible_operation.execute_playbook()
 
         self.all_completions.append(ansible_operation)
 
         return ansible_operation
 
+    def verify_config(self):
 
+        if not self.get_config('server_addr', ''):
+            self.log.error(
+                "No Ansible Runner Service address. "
+                "Try 'ceph config set mgr mgr/%s/server_addr <server name/ip>'",
+                self.module_name)
+
+        if not self.get_config('server_port', ''):
+            self.log.error(
+                "No Ansible Runner Service port. "
+                "Try 'ceph config set mgr mgr/%s/server_port <port number>'",
+                self.module_name)
+
+        if not self.get_config('username', ''):
+            self.log.error(
+                "No Ansible Runner Service user. "
+                "Try 'ceph config set mgr mgr/%s/username <string value>'",
+                self.module_name)
+
+        if not self.get_config('password', ''):
+            self.log.error(
+                "No Ansible Runner Service User password. "
+                "Try 'ceph config set mgr mgr/%s/password <string value>'",
+                self.module_name)
 
 # Auxiliary functions
 #==============================================================================
 
-def process_inventary_json(json_inventary):
-    """ Adapt the output of the 'get_inventory' playbook
-        to the Orchestrator rules
+def process_inventary_json(inventory_events, ar_client, playbook_uuid):
+    """ Adapt the output of the playbook used in 'get_inventory'
+        to the Orchestrator expected output (list of InventoryNode)
 
-    @param json_inventary: Inventary as is returned by the 'get_inventory' pb
+    @param inventory_events: events dict with the results
+
+        Example:
+        inventory_events =
+        {'37-100564f1-9fed-48c2-bd62-4ae8636dfcdb': {'host': '192.168.121.254',
+                                                    'task': 'RESULTS',
+                                                    'event': 'runner_on_ok'},
+        '36-2016b900-e38f-7dcd-a2e7-00000000000e': {'host': '192.168.121.252'
+                                                    'task': 'RESULTS',
+                                                    'event': 'runner_on_ok'}}
+    @param ar_client: Ansible Runner Service client
+    @param playbook_uuid: Palybooud identifier
+
     @return              : list of InventoryNode
     """
 
-    #TODO
-    return "<<<{}>>>".format(json_inventary)
+    #Obtain the needed data for each result event
+    inventory_nodes = []
+
+    # Loop over the result events and request the event data
+    for event_key, data in inventory_events.iteritems():
+        event_response = ar_client.http_get(EVENT_DATA_URL % (playbook_uuid,
+                                                              event_key))
+
+        # Process the data for each event
+        if event_response:
+            event_data = json.loads(event_response.text)["data"]["event_data"]
+
+            free_disks = event_data["res"]["free_disks"]
+            for item, data in free_disks.iteritems():
+                if item not in [host.name for host in inventory_nodes]:
+
+                    devs = []
+                    for dev_key, dev_data in data.iteritems():
+                        if dev_key not in [device.id for device in devs]:
+                            dev = orchestrator.InventoryDevice()
+                            dev.id = dev_key
+                            dev.type = 'hdd' if dev_data["rotational"] else "sdd/nvme"
+                            dev.size = dev_data["sectorsize"] * dev_data["sectors"]
+                            devs.append(dev)
+
+                    inventory_nodes.append(
+                            orchestrator.InventoryNode(item, devs))
+
+
+    return inventory_nodes
