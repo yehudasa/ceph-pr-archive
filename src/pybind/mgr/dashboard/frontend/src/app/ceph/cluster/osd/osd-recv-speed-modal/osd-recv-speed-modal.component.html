@@ -1,0 +1,87 @@
+<cd-modal [modalRef]="bsModalRef">
+  <ng-container class="modal-title"
+                i18n>OSD recovery speed
+  </ng-container>
+
+  <ng-container class="modal-content">
+    <form class="form-horizontal"
+          #formDir="ngForm"
+          [formGroup]="osdRecvSpeedForm"
+          novalidate>
+      <div class="modal-body">
+        <!-- Profile -->
+        <div class="form-group">
+          <label class="control-label col-sm-6"
+                 for="profile"
+                 i18n>
+            Profile
+          </label>
+          <div class="col-sm-6">
+            <select class="form-control"
+                    formControlName="profile"
+                    id="profile"
+                    (change)="onProfileChange($event.target.value)">
+              <option *ngFor="let profile of profiles"
+                      i18n
+                      [value]="profile.name">
+                {{ profile.text }}
+              </option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Customize profile -->
+        <div class="form-group">
+          <div class="col-sm-offset-6 col-sm-6">
+            <div class="checkbox checkbox-primary">
+              <input formControlName="customizeProfile"
+                     id="customizeProfile"
+                     type="checkbox"
+                     (change)="onCustomizeProfileChange()">
+              <label i18n
+                     for="customizeProfile">Customize profile values</label>
+            </div>
+          </div>
+        </div>
+        <!-- Profile values -->
+        <div class="form-group" *ngFor="let attr of profileAttrs">
+          <div [ngClass]="{'has-error': osdRecvSpeedForm.showError(attr, formDir)}">
+            <label class="control-label col-sm-6"
+                   [for]="attr"
+                   i18n>{{ attr }}
+              <span class="required"></span>
+            </label>
+            <div class="col-sm-6">
+              <input class="form-control"
+                     type="text"
+                     [id]="attr"
+                     [formControlName]="attr"
+                     [readonly]="!osdRecvSpeedForm.getValue('customizeProfile')"
+                     required>
+              <span i18n
+                    class="help-block"
+                    *ngIf="osdRecvSpeedForm.showError(attr, formDir, 'required')">
+                This field is required!
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <div class="button-group text-right">
+          <cd-submit-button (submitAction)="submitAction()"
+                            [form]="osdRecvSpeedForm"
+                            i18n>
+            Submit
+          </cd-submit-button>
+
+          <button class="btn btn-link btn-sm"
+                  (click)="bsModalRef.hide()"
+                  i18n>
+            Cancel
+          </button>
+        </div>
+      </div>
+    </form>
+  </ng-container>
+</cd-modal>
