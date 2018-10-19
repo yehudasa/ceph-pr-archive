@@ -218,6 +218,29 @@ Example:
       Some <strong>helper</strong> html text
     </cd-helper>
 
+How to extract I18N messages from source code?
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+To extract the I18N messages from the templates and the TypeScript files just
+run the following command in ``src/pybind/mgr/dashboard/frontend``:
+
+  $ npm run i18n
+
+This will extract all marked messages from the HTML templates first and then
+add all marked strings from the TypeScript files to the translation template.
+As long as the extraction from TypeScript files is not supported from Angular
+itself, we need to use the
+[ngx-translator](https://github.com/ngx-translate/i18n-polyfill) extractor to
+parse the TypeScript files.
+
+When the command ran successfully, it should have created or updated the file
+src/locale/messages.xlf. Now, you can use this file to add a new translation
+to the project or update an existing language.
+
+A new language should be placed in ``src/locale/messages.<locale-id>.xlf``.
+For example the path for german would be ``src/locale/messages.de-DE.xlf``.
+Furthermore the language must be defined in the file
+``supported-languages.enum.ts``.
+
 Backend Development
 -------------------
 
