@@ -59,6 +59,7 @@ def plain_open(key, device, mapping):
         'cryptsetup',
         '--key-file',
         '-',
+        '--allow-discards',  # allow discards (aka TRIM) requests for device
         'open',
         device,
         mapping,
@@ -83,6 +84,7 @@ def luks_open(key, device, mapping):
         'cryptsetup',
         '--key-file',
         '-',
+        '--allow-discards',  # allow discards (aka TRIM) requests for device
         'luksOpen',
         device,
         mapping,
