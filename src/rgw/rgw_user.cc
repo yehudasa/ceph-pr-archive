@@ -22,6 +22,7 @@
 #include "rgw_common.h"
 
 #include "rgw_bucket.h"
+#include "rgw_quota.h"
 
 #define dout_subsys ceph_subsys_rgw
 
@@ -66,7 +67,8 @@ int rgw_user_sync_all_stats(RGWRados *store, const rgw_user& user_id)
       RGWBucketEnt& bucket_ent = i->second;
       RGWBucketInfo bucket_info;
 
-      ret = store->get_bucket_instance_info(obj_ctx, bucket_ent.bucket, bucket_info, NULL, NULL);
+      ret = store->get_bucket_info(obj_ctx, user_id.tenant, bucket_ent.bucket.name,
+                                   bucket_info, nullptr, nullptr);
       if (ret < 0) {
         ldout(cct, 0) << "ERROR: could not read bucket info: bucket=" << bucket_ent.bucket << " ret=" << ret << dendl;
         continue;
@@ -719,7 +721,7 @@ static void dump_user_info(Formatter *f, RGWUserInfo &info,
   f->dump_string("email", info.user_email);
   f->dump_int("suspended", (int)info.suspended);
   f->dump_int("max_buckets", (int)info.max_buckets);
-
+  f->dump_bool("system", (bool)info.system);
   dump_subusers_info(f, info);
   dump_access_keys_info(f, info);
   dump_swift_keys_info(f, info);
@@ -1963,14 +1965,7 @@ int RGWUser::execute_add(RGWUserAdminOpState& op_state, std::string *err_msg)
   if (op_state.has_bucket_quota()) {
     user_info.bucket_quota = op_state.get_bucket_quota();
   } else {
-    if (cct->_conf->rgw_bucket_default_quota_max_objects >= 0) {
-      user_info.bucket_quota.max_objects = cct->_conf->rgw_bucket_default_quota_max_objects;
-      user_info.bucket_quota.enabled = true;
-    }
-    if (cct->_conf->rgw_bucket_default_quota_max_size >= 0) {
-      user_info.bucket_quota.max_size = cct->_conf->rgw_bucket_default_quota_max_size;
-      user_info.bucket_quota.enabled = true;
-    }
+    rgw_apply_default_bucket_quota(user_info.bucket_quota, cct->_conf);
   }
 
   if (op_state.temp_url_key_specified) {
@@ -1984,14 +1979,7 @@ int RGWUser::execute_add(RGWUserAdminOpState& op_state, std::string *err_msg)
   if (op_state.has_user_quota()) {
     user_info.user_quota = op_state.get_user_quota();
   } else {
-    if (cct->_conf->rgw_user_default_quota_max_objects >= 0) {
-      user_info.user_quota.max_objects = cct->_conf->rgw_user_default_quota_max_objects;
-      user_info.user_quota.enabled = true;
-    }
-    if (cct->_conf->rgw_user_default_quota_max_size >= 0) {
-      user_info.user_quota.max_size = cct->_conf->rgw_user_default_quota_max_size;
-      user_info.user_quota.enabled = true;
-    }
+    rgw_apply_default_user_quota(user_info.user_quota, cct->_conf);
   }
 
   // update the request

@@ -1,9 +1,18 @@
-import { Component, EventEmitter, Input, OnChanges, OnInit, Output } from '@angular/core';
+import {
+  Component,
+  EventEmitter,
+  Input,
+  OnChanges,
+  OnInit,
+  Output,
+  ViewChild
+} from '@angular/core';
 
 import * as _ from 'lodash';
 
 import { CellTemplate } from '../../enum/cell-template.enum';
 import { CdTableColumn } from '../../models/cd-table-column';
+import { TableComponent } from '../table/table.component';
 
 /**
  * Display the given data in a 2 column data table. The left column
@@ -19,15 +28,20 @@ import { CdTableColumn } from '../../models/cd-table-column';
   styleUrls: ['./table-key-value.component.scss']
 })
 export class TableKeyValueComponent implements OnInit, OnChanges {
-  columns: Array<CdTableColumn> = [];
+  @ViewChild(TableComponent)
+  table: TableComponent;
 
-  @Input() data: any;
-  @Input() autoReload: any = 5000;
-
-  @Input() renderObjects = false;
+  @Input()
+  data: any;
+  @Input()
+  autoReload: any = 5000;
+  @Input()
+  renderObjects = false;
   // Only used if objects are rendered
-  @Input() appendParentKey = true;
+  @Input()
+  appendParentKey = true;
 
+  columns: Array<CdTableColumn> = [];
   tableData: {
     key: string;
     value: any;
@@ -36,7 +50,8 @@ export class TableKeyValueComponent implements OnInit, OnChanges {
   /**
    * The function that will be called to update the input data.
    */
-  @Output() fetchData = new EventEmitter();
+  @Output()
+  fetchData = new EventEmitter();
 
   constructor() {}
 
@@ -52,6 +67,16 @@ export class TableKeyValueComponent implements OnInit, OnChanges {
         flexGrow: 3
       }
     ];
+    // We need to subscribe the 'fetchData' event here and not in the
+    // HTML template, otherwise the data table will display the loading
+    // indicator infinitely if data is only bound via '[data]="xyz"'.
+    // See for 'loadingIndicator' in 'TableComponent::ngOnInit()'.
+    if (this.fetchData.observers.length > 0) {
+      this.table.fetchData.subscribe(() => {
+        // Forward event triggered by the 'cd-table' data table.
+        this.fetchData.emit();
+      });
+    }
     this.useData();
   }
 
@@ -137,10 +162,5 @@ export class TableKeyValueComponent implements OnInit, OnChanges {
       return;
     }
     return v;
-  }
-
-  reloadData() {
-    // Forward event triggered by the 'cd-table' datatable.
-    this.fetchData.emit();
   }
 }

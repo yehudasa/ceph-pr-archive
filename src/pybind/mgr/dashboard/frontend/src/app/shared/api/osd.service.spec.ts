@@ -1,7 +1,7 @@
 import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
 import { TestBed } from '@angular/core/testing';
 
-import { configureTestBed } from '../unit-test-helper';
+import { configureTestBed } from '../../../testing/unit-test-helper';
 import { OsdService } from './osd.service';
 
 describe('OsdService', () => {
@@ -48,5 +48,18 @@ describe('OsdService', () => {
     service.scrub('foo', false).subscribe();
     const req = httpTesting.expectOne('api/osd/foo/scrub?deep=false');
     expect(req.request.method).toBe('POST');
+  });
+
+  it('should call getFlags', () => {
+    service.getFlags().subscribe();
+    const req = httpTesting.expectOne('api/osd/flags');
+    expect(req.request.method).toBe('GET');
+  });
+
+  it('should call updateFlags', () => {
+    service.updateFlags(['foo']).subscribe();
+    const req = httpTesting.expectOne('api/osd/flags');
+    expect(req.request.method).toBe('PUT');
+    expect(req.request.body).toEqual({ flags: ['foo'] });
   });
 });

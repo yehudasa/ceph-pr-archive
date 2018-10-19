@@ -1,8 +1,12 @@
 import { Component, OnInit, TemplateRef, ViewChild } from '@angular/core';
 
 import { ConfigurationService } from '../../../shared/api/configuration.service';
+import { CdTableAction } from '../../../shared/models/cd-table-action';
 import { CdTableColumn } from '../../../shared/models/cd-table-column';
+import { CdTableFetchDataContext } from '../../../shared/models/cd-table-fetch-data-context';
 import { CdTableSelection } from '../../../shared/models/cd-table-selection';
+import { Permission } from '../../../shared/models/permissions';
+import { AuthStorageService } from '../../../shared/services/auth-storage.service';
 
 @Component({
   selector: 'cd-configuration',
@@ -10,6 +14,8 @@ import { CdTableSelection } from '../../../shared/models/cd-table-selection';
   styleUrls: ['./configuration.component.scss']
 })
 export class ConfigurationComponent implements OnInit {
+  permission: Permission;
+  tableActions: CdTableAction[];
   data = [];
   columns: CdTableColumn[];
   selection = new CdTableSelection();
@@ -63,32 +69,38 @@ export class ConfigurationComponent implements OnInit {
     }
   ];
 
-  @ViewChild('confValTpl') public confValTpl: TemplateRef<any>;
+  @ViewChild('confValTpl')
+  public confValTpl: TemplateRef<any>;
+  @ViewChild('confFlagTpl')
+  public confFlagTpl: TemplateRef<any>;
 
-  constructor(private configurationService: ConfigurationService) {}
+  constructor(
+    private authStorageService: AuthStorageService,
+    private configurationService: ConfigurationService
+  ) {
+    this.permission = this.authStorageService.getPermissions().configOpt;
+    const getConfigOptUri = () =>
+      this.selection.first() && `${encodeURI(this.selection.first().name)}`;
+    const editAction: CdTableAction = {
+      permission: 'update',
+      icon: 'fa-pencil',
+      routerLink: () => `/configuration/edit/${getConfigOptUri()}`,
+      name: 'Edit'
+    };
+    this.tableActions = [editAction];
+  }
 
   ngOnInit() {
     this.columns = [
-      { flexGrow: 2, canAutoResize: true, prop: 'name' },
+      { canAutoResize: true, prop: 'name' },
+      { prop: 'desc', name: 'Description', cellClass: 'wrap' },
       {
-        flexGrow: 2,
         prop: 'value',
         name: 'Current value',
         cellClass: 'wrap',
         cellTemplate: this.confValTpl
       },
-      { flexGrow: 1, prop: 'source' },
-      { flexGrow: 2, prop: 'desc', name: 'Description', cellClass: 'wrap' },
-      { flexGrow: 2, prop: 'long_desc', name: 'Long description', cellClass: 'wrap' },
-      { flexGrow: 1, prop: 'type' },
-      { flexGrow: 1, prop: 'level' },
-      { flexGrow: 1, prop: 'default', cellClass: 'wrap' },
-      { flexGrow: 2, prop: 'daemon_default', name: 'Daemon default' },
-      { flexGrow: 1, prop: 'tags', name: 'Tags' },
-      { flexGrow: 1, prop: 'services', name: 'Services' },
-      { flexGrow: 1, prop: 'see_also', name: 'See_also', cellClass: 'wrap' },
-      { flexGrow: 1, prop: 'max', name: 'Max' },
-      { flexGrow: 1, prop: 'min', name: 'Min' }
+      { prop: 'default', cellClass: 'wrap' }
     ];
   }
 
@@ -96,10 +108,15 @@ export class ConfigurationComponent implements OnInit {
     this.selection = selection;
   }
 
-  getConfigurationList() {
-    this.configurationService.getConfigData().subscribe((data: any) => {
-      this.data = data;
-    });
+  getConfigurationList(context: CdTableFetchDataContext) {
+    this.configurationService.getConfigData().subscribe(
+      (data: any) => {
+        this.data = data;
+      },
+      () => {
+        context.error();
+      }
+    );
   }
 
   updateFilter() {

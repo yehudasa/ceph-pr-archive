@@ -134,26 +134,6 @@ void add_devices(
   }
 }
 
-void log_dump(
-  CephContext *cct,
-  const string& path,
-  const vector<string>& devs)
-{
-  validate_path(cct, path, true);
-  BlueFS *fs = new BlueFS(cct);
-  
-  add_devices(fs, cct, devs);
-
-  int r = fs->log_dump(cct, path, devs);
-  if (r < 0) {
-    cerr << "log_dump failed" << ": "
-         << cpp_strerror(r) << std::endl;
-    exit(EXIT_FAILURE);
-  }
-
-  delete fs;
-}
-
 BlueFS *open_bluefs(
   CephContext *cct,
   const string& path,
@@ -171,6 +151,22 @@ BlueFS *open_bluefs(
     exit(EXIT_FAILURE);
   }
   return fs;
+}
+
+void log_dump(
+  CephContext *cct,
+  const string& path,
+  const vector<string>& devs)
+{
+  BlueFS* fs = open_bluefs(cct, path, devs);
+  int r = fs->log_dump();
+  if (r < 0) {
+    cerr << "log_dump failed" << ": "
+         << cpp_strerror(r) << std::endl;
+    exit(EXIT_FAILURE);
+  }
+
+  delete fs;
 }
 
 void inferring_bluefs_devices(vector<string>& devs, std::string& path)
@@ -333,8 +329,12 @@ int main(int argc, char **argv)
     if (r < 0) {
       cerr << "error from fsck: " << cpp_strerror(r) << std::endl;
       exit(EXIT_FAILURE);
+    } else if (r > 0) {
+      cerr << action << " found " << r << " error(s)" << std::endl;
+      exit(EXIT_FAILURE);
+    } else {
+      cout << action << " success" << std::endl;
     }
-    cout << action << " success" << std::endl;
   }
   else if (action == "prime-osd-dir") {
     bluestore_bdev_label_t label;
@@ -354,7 +354,6 @@ int main(int argc, char **argv)
     for (auto kk : {
 	"whoami",
 	  "osd_key",
-	  "path_block", "path_block.db", "path_block.wal",
 	  "ceph_fsid",
 	  "fsid",
 	  "type",
@@ -372,49 +371,20 @@ int main(int argc, char **argv)
 	v += label.meta["whoami"];
 	v += "]\nkey = " + i->second;
       }
-      if (k.find("path_") == 0) {
-	p = path + "/" + k.substr(5);
-	int r = ::symlink(v.c_str(), p.c_str());
-	if (r < 0 && errno == EEXIST) {
-	  struct stat st;
-	  r = ::stat(p.c_str(), &st);
-	  if (r == 0 && S_ISLNK(st.st_mode)) {
-	    char target[PATH_MAX];
-	    r = ::readlink(p.c_str(), target, sizeof(target));
-	    if (r > 0) {
-	      if (v == target) {
-		r = 0;  // already matches our target
-	      } else {
-		::unlink(p.c_str());
-		r = ::symlink(v.c_str(), p.c_str());
-	      }
-	    } else {
-	      cerr << "error reading existing link at " << p << ": " << cpp_strerror(errno)
-		   << std::endl;
-	    }
-	  }
-	}
-	if (r < 0) {
-	  cerr << "error symlinking " << p << ": " << cpp_strerror(errno)
-	       << std::endl;
-	  exit(EXIT_FAILURE);
-	}
-      } else {
-	v += "\n";
-	int fd = ::open(p.c_str(), O_CREAT|O_TRUNC|O_WRONLY, 0600);
-	if (fd < 0) {
-	  cerr << "error writing " << p << ": " << cpp_strerror(errno)
-	       << std::endl;
-	  exit(EXIT_FAILURE);
-	}
-	int r = safe_write(fd, v.c_str(), v.size());
-	if (r < 0) {
-	  cerr << "error writing to " << p << ": " << cpp_strerror(errno)
-	       << std::endl;
-	  exit(EXIT_FAILURE);
-	}
-	::close(fd);
+      v += "\n";
+      int fd = ::open(p.c_str(), O_CREAT|O_TRUNC|O_WRONLY|O_CLOEXEC, 0600);
+      if (fd < 0) {
+	cerr << "error writing " << p << ": " << cpp_strerror(errno)
+	     << std::endl;
+	exit(EXIT_FAILURE);
       }
+      int r = safe_write(fd, v.c_str(), v.size());
+      if (r < 0) {
+	cerr << "error writing to " << p << ": " << cpp_strerror(errno)
+	     << std::endl;
+	exit(EXIT_FAILURE);
+      }
+      ::close(fd);
     }
   }
   else if (action == "show-label") {
@@ -580,7 +550,7 @@ int main(int argc, char **argv)
 	  exit(EXIT_FAILURE);
 	}
 	string path = out_dir + "/" + dir + "/" + file;
-	int fd = ::open(path.c_str(), O_CREAT|O_WRONLY|O_TRUNC, 0644);
+	int fd = ::open(path.c_str(), O_CREAT|O_WRONLY|O_TRUNC|O_CLOEXEC, 0644);
 	if (fd < 0) {
 	  r = -errno;
 	  cerr << "open " << path << " failed: " << cpp_strerror(r) << std::endl;

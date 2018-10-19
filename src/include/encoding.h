@@ -30,8 +30,6 @@
 
 #include "include/int_types.h"
 
-#include "include/memory.h"
-
 #include "common/convenience.h"
 
 #include "byteorder.h"
@@ -81,7 +79,7 @@ inline void decode_raw(T& t, bufferlist::const_iterator &p)
 
 #define WRITE_RAW_ENCODER(type)						\
   inline void encode(const type &v, ::ceph::bufferlist& bl, uint64_t features=0) { ::ceph::encode_raw(v, bl); } \
-  inline void decode(type &v, ::ceph::bufferlist::const_iterator& p) { __ASSERT_FUNCTION ::ceph::decode_raw(v, p); }
+  inline void decode(type &v, ::ceph::bufferlist::const_iterator& p) { ::ceph::decode_raw(v, p); }
 
 WRITE_RAW_ENCODER(__u8)
 #ifndef _CHAR_IS_SIGNED
@@ -144,7 +142,7 @@ WRITE_INTTYPE_ENCODER(int16_t, le16)
       break;								\
     char fn[PATH_MAX];							\
     snprintf(fn, sizeof(fn), ENCODE_STRINGIFY(ENCODE_DUMP_PATH) "/%s__%d.%x", #cl, getpid(), i++); \
-    int fd = ::open(fn, O_WRONLY|O_TRUNC|O_CREAT, 0644);		\
+    int fd = ::open(fn, O_WRONLY|O_TRUNC|O_CREAT|O_CLOEXEC, 0644);		\
     if (fd >= 0) {							\
       ::ceph::bufferlist sub;						\
       sub.substr_of(bl, pre_off, bl.length() - pre_off);		\
@@ -364,13 +362,13 @@ template<class T, class Alloc, typename traits=denc_traits<T>>
 inline std::enable_if_t<!traits::supported>
 decode(std::list<T,Alloc>& ls, bufferlist::const_iterator& p);
 template<class T, class Alloc>
-inline void encode(const std::list<ceph::shared_ptr<T>, Alloc>& ls,
+inline void encode(const std::list<std::shared_ptr<T>, Alloc>& ls,
 		   bufferlist& bl);
 template<class T, class Alloc>
-inline void encode(const std::list<ceph::shared_ptr<T>, Alloc>& ls,
+inline void encode(const std::list<std::shared_ptr<T>, Alloc>& ls,
 		   bufferlist& bl, uint64_t features);
 template<class T, class Alloc>
-inline void decode(std::list<ceph::shared_ptr<T>, Alloc>& ls,
+inline void decode(std::list<std::shared_ptr<T>, Alloc>& ls,
 		   bufferlist::const_iterator& p);
 template<class T, class Comp, class Alloc, typename traits=denc_traits<T>>
 inline std::enable_if_t<!traits::supported>
@@ -418,14 +416,14 @@ template<class T, class Alloc, typename traits=denc_traits<T>>
 inline std::enable_if_t<!traits::supported>
 decode_nohead(int len, std::vector<T,Alloc>& v, bufferlist::const_iterator& p);
 template<class T,class Alloc>
-inline void encode(const std::vector<ceph::shared_ptr<T>,Alloc>& v,
+inline void encode(const std::vector<std::shared_ptr<T>,Alloc>& v,
 		   bufferlist& bl,
 		   uint64_t features);
 template<class T, class Alloc>
-inline void encode(const std::vector<ceph::shared_ptr<T>,Alloc>& v,
+inline void encode(const std::vector<std::shared_ptr<T>,Alloc>& v,
 		   bufferlist& bl);
 template<class T, class Alloc>
-inline void decode(std::vector<ceph::shared_ptr<T>,Alloc>& v,
+inline void decode(std::vector<std::shared_ptr<T>,Alloc>& v,
 		   bufferlist::const_iterator& p);
 template<class T, class U, class Comp, class Alloc,
 	 typename t_traits=denc_traits<T>, typename u_traits=denc_traits<U>>
@@ -522,7 +520,7 @@ inline void decode(T &o, const bufferlist& bl)
 {
   auto p = bl.begin();
   decode(o, p);
-  assert(p.end());
+  ceph_assert(p.end());
 }
 
 // boost optional
@@ -653,15 +651,14 @@ inline std::enable_if_t<!traits::supported>
   decode(n, p);
   ls.clear();
   while (n--) {
-    T v;
-    decode(v, p);
-    ls.push_back(v);
+    ls.emplace_back();
+    decode(ls.back(), p);
   }
 }
 
-// std::list<ceph::shared_ptr<T>>
+// std::list<std::shared_ptr<T>>
 template<class T, class Alloc>
-inline void encode(const std::list<ceph::shared_ptr<T>, Alloc>& ls,
+inline void encode(const std::list<std::shared_ptr<T>, Alloc>& ls,
 		   bufferlist& bl)
 {
   __u32 n = (__u32)(ls.size());  // c++11 std::list::size() is O(1)
@@ -670,7 +667,7 @@ inline void encode(const std::list<ceph::shared_ptr<T>, Alloc>& ls,
     encode(**p, bl);
 }
 template<class T, class Alloc>
-inline void encode(const std::list<ceph::shared_ptr<T>, Alloc>& ls,
+inline void encode(const std::list<std::shared_ptr<T>, Alloc>& ls,
 		   bufferlist& bl, uint64_t features)
 {
   __u32 n = (__u32)(ls.size());  // c++11 std::list::size() is O(1)
@@ -679,14 +676,14 @@ inline void encode(const std::list<ceph::shared_ptr<T>, Alloc>& ls,
     encode(**p, bl, features);
 }
 template<class T, class Alloc>
-inline void decode(std::list<ceph::shared_ptr<T>, Alloc>& ls,
+inline void decode(std::list<std::shared_ptr<T>, Alloc>& ls,
 		   bufferlist::const_iterator& p)
 {
   __u32 n;
   decode(n, p);
   ls.clear();
   while (n--) {
-    ceph::shared_ptr<T> v(std::make_shared<T>());
+    std::shared_ptr<T> v(std::make_shared<T>());
     decode(*v, p);
     ls.push_back(v);
   }
@@ -849,7 +846,7 @@ inline std::enable_if_t<!traits::supported>
 
 // vector (shared_ptr)
 template<class T,class Alloc>
-inline void encode(const std::vector<ceph::shared_ptr<T>,Alloc>& v,
+inline void encode(const std::vector<std::shared_ptr<T>,Alloc>& v,
 		   bufferlist& bl,
 		   uint64_t features)
 {
@@ -862,7 +859,7 @@ inline void encode(const std::vector<ceph::shared_ptr<T>,Alloc>& v,
       encode(T(), bl, features);
 }
 template<class T, class Alloc>
-inline void encode(const std::vector<ceph::shared_ptr<T>,Alloc>& v,
+inline void encode(const std::vector<std::shared_ptr<T>,Alloc>& v,
 		   bufferlist& bl)
 {
   __u32 n = (__u32)(v.size());
@@ -874,7 +871,7 @@ inline void encode(const std::vector<ceph::shared_ptr<T>,Alloc>& v,
       encode(T(), bl);
 }
 template<class T, class Alloc>
-inline void decode(std::vector<ceph::shared_ptr<T>,Alloc>& v,
+inline void decode(std::vector<std::shared_ptr<T>,Alloc>& v,
 		   bufferlist::const_iterator& p)
 {
   __u32 n;
@@ -1167,9 +1164,8 @@ inline void decode(std::deque<T,Alloc>& ls, bufferlist::const_iterator& p)
   decode(n, p);
   ls.clear();
   while (n--) {
-    T v;
-    decode(v, p);
-    ls.push_back(v);
+    ls.emplace_back();
+    decode(ls.back(), p);
   }
 }
 

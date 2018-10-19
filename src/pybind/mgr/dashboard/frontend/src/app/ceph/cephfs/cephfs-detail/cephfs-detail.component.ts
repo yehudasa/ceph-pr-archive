@@ -13,10 +13,13 @@ import { DimlessPipe } from '../../../shared/pipes/dimless.pipe';
   styleUrls: ['./cephfs-detail.component.scss']
 })
 export class CephfsDetailComponent implements OnChanges, OnInit {
-  @ViewChild('poolUsageTpl') poolUsageTpl: TemplateRef<any>;
-  @ViewChild('activityTmpl') activityTmpl: TemplateRef<any>;
+  @ViewChild('poolUsageTpl')
+  poolUsageTpl: TemplateRef<any>;
+  @ViewChild('activityTmpl')
+  activityTmpl: TemplateRef<any>;
 
-  @Input() selection: CdTableSelection;
+  @Input()
+  selection: CdTableSelection;
 
   selectedItem: any;
 
@@ -27,6 +30,7 @@ export class CephfsDetailComponent implements OnChanges, OnInit {
   standbys = [];
   clientCount: number;
   mdsCounters = {};
+  grafanaId: any;
 
   objectValues = Object.values;
   clientsSelect = false;
@@ -40,6 +44,8 @@ export class CephfsDetailComponent implements OnChanges, OnInit {
   ngOnChanges() {
     if (this.selection.hasSelection) {
       this.selectedItem = this.selection.first();
+      const mdsInfo: any[] = this.selectedItem.mdsmap.info;
+      this.grafanaId = Object.values(mdsInfo)[0].name;
 
       if (this.id !== this.selectedItem.id) {
         this.id = this.selectedItem.id;

@@ -55,7 +55,7 @@
 #include "buffer_fwd.h"
 
 #ifdef __CEPH__
-# include "include/assert.h"
+# include "include/ceph_assert.h"
 #else
 # include <assert.h>
 #endif
@@ -81,6 +81,7 @@ class packet;
 }
 #endif // HAVE_SEASTAR
 class deleter;
+struct sha1_digest_t;
 
 namespace ceph {
 
@@ -144,12 +145,10 @@ namespace buffer CEPH_BUFFER_API {
   class raw;
   class raw_malloc;
   class raw_static;
-  class raw_mmap_pages;
   class raw_posix_aligned;
   class raw_hack_aligned;
   class raw_char;
   class raw_claimed_char;
-  class raw_pipe;
   class raw_unshareable; // diagnostic, unshareable char buffer
   class raw_combined;
   class raw_claim_buffer;
@@ -171,7 +170,7 @@ namespace buffer CEPH_BUFFER_API {
   raw* create_aligned(unsigned len, unsigned align);
   raw* create_aligned_in_mempool(unsigned len, unsigned align, int mempool);
   raw* create_page_aligned(unsigned len);
-  raw* create_zero_copy(unsigned len, int fd, int64_t *offset);
+  raw* create_small_page_aligned(unsigned len);
   raw* create_unshareable(unsigned len);
   raw* create_static(unsigned len, char *buf);
   raw* claim_buffer(unsigned len, char *buf, deleter del);
@@ -291,7 +290,7 @@ namespace buffer CEPH_BUFFER_API {
       return begin();
     }
     const_iterator begin_deep(size_t offset=0) const {
-      return const_iterator(this, 0, true);
+      return const_iterator(this, offset, true);
     }
 
     // misc
@@ -335,9 +334,6 @@ namespace buffer CEPH_BUFFER_API {
 
     void copy_out(unsigned o, unsigned l, char *dest) const;
 
-    bool can_zero_copy() const;
-    int zero_copy_to_fd(int fd, int64_t *offset) const;
-
     unsigned wasted() const;
 
     int cmp(const ptr& o) const;
@@ -345,11 +341,19 @@ namespace buffer CEPH_BUFFER_API {
 
     // modifiers
     void set_offset(unsigned o) {
+#ifdef __CEPH__
+      ceph_assert(raw_length() >= o);
+#else
       assert(raw_length() >= o);
+#endif
       _off = o;
     }
     void set_length(unsigned l) {
+#ifdef __CEPH__
+      ceph_assert(raw_length() >= l);
+#else
       assert(raw_length() >= l);
+#endif
       _len = l;
     }
 
@@ -691,7 +695,6 @@ namespace buffer CEPH_BUFFER_API {
 
   private:
     mutable iterator last_p;
-    int zero_copy_to_fd(int fd) const;
 
   public:
     // cons/des
@@ -749,7 +752,11 @@ namespace buffer CEPH_BUFFER_API {
 	   it++) {
 	len += (*it).length();
       }
+#ifdef __CEPH__
+      ceph_assert(len == _len);
+#else
       assert(len == _len);
+#endif // __CEPH__
 #endif
       return _len;
     }
@@ -757,7 +764,6 @@ namespace buffer CEPH_BUFFER_API {
     bool contents_equal(buffer::list& other);
     bool contents_equal(const buffer::list& other) const;
 
-    bool can_zero_copy() const;
     bool is_provided_buffer(const char *dst) const;
     bool is_aligned(unsigned align) const;
     bool is_page_aligned() const;
@@ -904,11 +910,6 @@ namespace buffer CEPH_BUFFER_API {
 
     void substr_of(const list& other, unsigned off, unsigned len);
 
-    /// return a pointer to a contiguous extent of the buffer,
-    /// reallocating as needed
-    char *get_contiguous(unsigned off,  ///< offset
-			 unsigned len); ///< length
-
     // funky modifer
     void splice(unsigned off, unsigned len, list *claim_by=0 /*, bufferlist& replace_with */);
     void write(int off, int len, std::ostream& out) const;
@@ -920,14 +921,16 @@ namespace buffer CEPH_BUFFER_API {
     void hexdump(std::ostream &out, bool trailing_newline = true) const;
     int read_file(const char *fn, std::string *error);
     ssize_t read_fd(int fd, size_t len);
-    int read_fd_zero_copy(int fd, size_t len);
     int write_file(const char *fn, int mode=0644);
     int write_fd(int fd) const;
     int write_fd(int fd, uint64_t offset) const;
-    int write_fd_zero_copy(int fd) const;
     template<typename VectorT>
     void prepare_iov(VectorT *piov) const {
+#ifdef __CEPH__
+      ceph_assert(_buffers.size() <= IOV_MAX);
+#else
       assert(_buffers.size() <= IOV_MAX);
+#endif
       piov->resize(_buffers.size());
       unsigned n = 0;
       for (auto& p : _buffers) {
@@ -938,6 +941,7 @@ namespace buffer CEPH_BUFFER_API {
     }
     uint32_t crc32c(uint32_t crc) const;
     void invalidate_crc();
+    sha1_digest_t sha1(); 
 
     // These functions return a bufferlist with a pointer to a single
     // static buffer. They /must/ not outlive the memory they

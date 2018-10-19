@@ -4,9 +4,11 @@ from __future__ import absolute_import
 import collections
 import json
 
-from . import ApiController, AuthRequired, Endpoint, BaseController
+from . import ApiController, Endpoint, BaseController
 from .. import mgr
+from ..security import Permission, Scope
 from ..services.ceph_service import CephService
+from ..services.tcmu_service import TcmuService
 from ..tools import NotificationQueue
 
 
@@ -14,7 +16,6 @@ LOG_BUFFER_SIZE = 30
 
 
 @ApiController('/dashboard')
-@AuthRequired()
 class Dashboard(BaseController):
     def __init__(self):
         super(Dashboard, self).__init__()
@@ -46,32 +47,52 @@ class Dashboard(BaseController):
 
             NotificationQueue.register(self.append_log, 'clog')
 
-        # Fuse osdmap with pg_summary to get description of pools
-        # including their PG states
-
-        osd_map = self.osd_map()
-
-        pools = CephService.get_pool_list_with_stats()
-
-        # Not needed, skip the effort of transmitting this
-        # to UI
-        del osd_map['pg_temp']
-
-        df = mgr.get("df")
-        df['stats']['total_objects'] = sum(
-            [p['stats']['objects'] for p in df['pools']])
-
-        return {
+        result = {
             "health": self.health_data(),
-            "mon_status": self.mon_status(),
-            "fs_map": mgr.get('fs_map'),
-            "osd_map": osd_map,
-            "clog": list(self.log_buffer),
-            "audit_log": list(self.audit_buffer),
-            "pools": pools,
-            "mgr_map": mgr.get("mgr_map"),
-            "df": df
         }
+
+        if self._has_permissions(Permission.READ, Scope.LOG):
+            result['clog'] = list(self.log_buffer)
+            result['audit_log'] = list(self.audit_buffer)
+
+        if self._has_permissions(Permission.READ, Scope.MONITOR):
+            result['mon_status'] = self.mon_status()
+
+        if self._has_permissions(Permission.READ, Scope.CEPHFS):
+            result['fs_map'] = mgr.get('fs_map')
+
+        if self._has_permissions(Permission.READ, Scope.OSD):
+            osd_map = self.osd_map()
+            # Not needed, skip the effort of transmitting this to UI
+            del osd_map['pg_temp']
+            result['osd_map'] = osd_map
+            result['scrub_status'] = CephService.get_scrub_status()
+            result['pg_info'] = CephService.get_pg_info()
+
+        if self._has_permissions(Permission.READ, Scope.MANAGER):
+            result['mgr_map'] = mgr.get("mgr_map")
+
+        if self._has_permissions(Permission.READ, Scope.POOL):
+            pools = CephService.get_pool_list_with_stats()
+            result['pools'] = pools
+
+            df = mgr.get("df")
+            df['stats']['total_objects'] = sum(
+                [p['stats']['objects'] for p in df['pools']])
+            result['df'] = df
+
+            result['client_perf'] = CephService.get_client_perf()
+
+        if self._has_permissions(Permission.READ, Scope.HOSTS):
+            result['hosts'] = len(mgr.list_servers())
+
+        if self._has_permissions(Permission.READ, Scope.RGW):
+            result['rgw'] = len(CephService.get_service_list('rgw'))
+
+        if self._has_permissions(Permission.READ, Scope.ISCSI):
+            result['iscsi_daemons'] = TcmuService.get_iscsi_daemons_amount()
+
+        return result
 
     def mon_status(self):
         mon_status_data = mgr.get("mon_status")

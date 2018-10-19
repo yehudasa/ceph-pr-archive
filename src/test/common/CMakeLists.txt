@@ -21,6 +21,13 @@ if(HAVE_BLKID)
   target_link_libraries(unittest_blkdev ceph-common ${BLKID_LIBRARIES})
 endif()
 
+# unittest_lockdep
+add_executable(unittest_lockdep
+  test_lockdep.cc
+  )
+add_ceph_unittest(unittest_lockdep)
+target_link_libraries(unittest_lockdep ceph-common global)
+
 # unittest_bloom_filter
 add_executable(unittest_bloom_filter
   test_bloom_filter.cc
@@ -39,6 +46,7 @@ target_link_libraries(unittest_histogram ceph-common)
 add_executable(unittest_prioritized_queue
   test_prioritized_queue.cc
   )
+target_link_libraries(unittest_prioritized_queue ceph-common)
 add_ceph_unittest(unittest_prioritized_queue)
 
 # unittest_mclock_priority_queue
@@ -46,7 +54,9 @@ add_executable(unittest_mclock_priority_queue
   test_mclock_priority_queue.cc
   )
 add_ceph_unittest(unittest_mclock_priority_queue)
-target_link_libraries(unittest_mclock_priority_queue ceph-common dmclock)
+target_link_libraries(unittest_mclock_priority_queue
+  ceph-common
+  dmclock::dmclock)
 
 # unittest_str_map
 add_executable(unittest_str_map
@@ -211,6 +221,7 @@ target_link_libraries(unittest_interval_set ceph-common)
 add_executable(unittest_weighted_priority_queue
   test_weighted_priority_queue.cc
   )
+target_link_libraries(unittest_weighted_priority_queue ceph-common)
 add_ceph_unittest(unittest_weighted_priority_queue)
 
 # unittest_mutex_debug
@@ -294,3 +305,7 @@ add_ceph_unittest(unittest_hobject)
 add_executable(unittest_async_completion test_async_completion.cc)
 add_ceph_unittest(unittest_async_completion)
 target_link_libraries(unittest_async_completion Boost::system)
+
+add_executable(unittest_async_shared_mutex test_async_shared_mutex.cc)
+add_ceph_unittest(unittest_async_shared_mutex)
+target_link_libraries(unittest_async_shared_mutex ceph-common Boost::system)

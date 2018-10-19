@@ -58,6 +58,16 @@
 
 static RGWRados *store = NULL;
 
+static const DoutPrefixProvider* dpp() {
+  struct GlobalPrefix : public DoutPrefixProvider {
+    CephContext *get_cct() const override { return store->ctx(); }
+    unsigned get_subsys() const override { return dout_subsys; }
+    std::ostream& gen_prefix(std::ostream& out) const override { return out; }
+  };
+  static GlobalPrefix global_dpp;
+  return &global_dpp;
+}
+
 void usage()
 {
   cout << "usage: radosgw-admin <cmd> [options...]" << std::endl;
@@ -187,11 +197,6 @@ void usage()
   cout << "  datalog list               list data log\n";
   cout << "  datalog trim               trim data log\n";
   cout << "  datalog status             read data log status\n";
-  cout << "  opstate list               list stateful operations entries (use client_id,\n";
-  cout << "                             op_id, object)\n";
-  cout << "  opstate set                set state on an entry (use client_id, op_id, object, state)\n";
-  cout << "  opstate renew              renew state on an entry (use client_id, op_id, object)\n";
-  cout << "  opstate rm                 remove entry (use client_id, op_id, object)\n";
   cout << "  orphans find               init and run search for leaked rados objects (use job-id, pool)\n";
   cout << "  orphans finish             clean up search for leaked rados objects\n";
   cout << "  orphans list-jobs          list the current job-ids for orphans search\n";
@@ -211,6 +216,12 @@ void usage()
   cout << "  reshard cancel             cancel resharding a bucket\n";
   cout << "  sync error list            list sync error\n";
   cout << "  sync error trim            trim sync error\n";
+  cout << "  mfa create                 create a new MFA TOTP token\n";
+  cout << "  mfa list                   list MFA TOTP tokens\n";
+  cout << "  mfa get                    show MFA TOTP token\n";
+  cout << "  mfa remove                 delete MFA TOTP token\n";
+  cout << "  mfa check                  check MFA TOTP token\n";
+  cout << "  mfa resync                 re-sync MFA TOTP token\n";
   cout << "options:\n";
   cout << "   --tenant=<tenant>         tenant name\n";
   cout << "   --uid=<id>                user id\n";
@@ -305,7 +316,6 @@ void usage()
   cout << "   --skip-zero-entries       log show only dumps entries that don't have zero value\n";
   cout << "                             in one of the numeric field\n";
   cout << "   --infile=<file>           specify a file to read in when setting data\n";
-  cout << "   --state=<state>           specify a state for the opstate set command\n";
   cout << "   --categories=<list>       comma separated list of categories, used in usage show\n";
   cout << "   --caps=<caps>             list of caps (e.g., \"usage=read, write; user=read\")\n";
   cout << "   --yes-i-really-mean-it    required for certain operations\n";
@@ -319,6 +329,8 @@ void usage()
   cout << "   --min-rewrite-size        min object size for bucket rewrite (default 4M)\n";
   cout << "   --max-rewrite-size        max object size for bucket rewrite (default ULLONG_MAX)\n";
   cout << "   --min-rewrite-stripe-size min stripe size for object rewrite (default 0)\n";
+  cout << "   --trim-delay-ms           time interval in msec to limit the frequency of sync error log entries trimming operations,\n";
+  cout << "                             the trimming process will sleep the specified msec for every 1000 entries trimmed\n";
   cout << "\n";
   cout << "<date> := \"YYYY-MM-DD[ hh:mm:ss]\"\n";
   cout << "\nQuota options:\n";
@@ -339,6 +351,12 @@ void usage()
   cout << "   --policy-name             name of the policy document\n";
   cout << "   --policy-doc              permission policy document\n";
   cout << "   --path-prefix             path prefix for filtering roles\n";
+  cout << "\nMFA options:\n";
+  cout << "   --totp-serial             a string that represents the ID of a TOTP token\n";
+  cout << "   --totp-seed               the secret seed that is used to calculate the TOTP\n";
+  cout << "   --totp-seconds            the time resolution that is being used for TOTP generation\n";
+  cout << "   --totp-window             the number of TOTP tokens that are checked before and after the current token when validating token\n";
+  cout << "   --totp-pin                the valid value of a TOTP token at a certain time\n";
   cout << "\n";
   generic_client_usage();
 }
@@ -458,10 +476,6 @@ enum {
   OPT_DATALOG_LIST,
   OPT_DATALOG_STATUS,
   OPT_DATALOG_TRIM,
-  OPT_OPSTATE_LIST,
-  OPT_OPSTATE_SET,
-  OPT_OPSTATE_RENEW,
-  OPT_OPSTATE_RM,
   OPT_REALM_CREATE,
   OPT_REALM_DELETE,
   OPT_REALM_GET,
@@ -531,7 +545,6 @@ static int get_cmd(const char *cmd, const char *prev_cmd, const char *prev_prev_
       strcmp(cmd, "object") == 0 ||
       strcmp(cmd, "objects") == 0 ||
       strcmp(cmd, "olh") == 0 ||
-      strcmp(cmd, "opstate") == 0 ||
       strcmp(cmd, "orphans") == 0 ||
       strcmp(cmd, "period") == 0 ||
       strcmp(cmd, "placement") == 0 ||
@@ -909,15 +922,6 @@ static int get_cmd(const char *cmd, const char *prev_cmd, const char *prev_prev_
       return OPT_DATA_SYNC_INIT;
     if (strcmp(cmd, "run") == 0)
       return OPT_DATA_SYNC_RUN;
-  } else if (strcmp(prev_cmd, "opstate") == 0) {
-    if (strcmp(cmd, "list") == 0)
-      return OPT_OPSTATE_LIST;
-    if (strcmp(cmd, "set") == 0)
-      return OPT_OPSTATE_SET;
-    if (strcmp(cmd, "renew") == 0)
-      return OPT_OPSTATE_RENEW;
-    if (strcmp(cmd, "rm") == 0)
-      return OPT_OPSTATE_RM;
   } else if (strcmp(prev_cmd, "sync") == 0) {
     if (strcmp(cmd, "status") == 0)
       return OPT_SYNC_STATUS;
@@ -2301,7 +2305,7 @@ static int bucket_source_sync_status(RGWRados *store, const RGWZone& zone,
     return 0;
   }
   std::vector<rgw_bucket_shard_sync_info> status;
-  int r = rgw_bucket_sync_status(store, source.id, bucket_info, &status);
+  int r = rgw_bucket_sync_status(dpp(), store, source.id, bucket_info, &status);
   if (r < 0) {
     lderr(store->ctx()) << "failed to read bucket sync status: " << cpp_strerror(r) << dendl;
     return r;
@@ -2528,7 +2532,7 @@ static int scan_totp(CephContext *cct, ceph::real_time& now, rados::cls::otp::ot
                      time_t *pofs)
 {
 #define MAX_TOTP_SKEW_HOURS (24 * 7)
-  assert(pins.size() == 2);
+  ceph_assert(pins.size() == 2);
 
   time_t start_time = ceph::real_clock::to_time_t(now);
   time_t time_ofs = 0, time_ofs_abs = 0;
@@ -2571,6 +2575,30 @@ static int scan_totp(CephContext *cct, ceph::real_time& now, rados::cls::otp::ot
   return -ENOENT;
 }
 
+static int trim_sync_error_log(int shard_id, const ceph::real_time& start_time,
+                               const ceph::real_time& end_time,
+                               const string& start_marker, const string& end_marker,
+                               int delay_ms)
+{
+  auto oid = RGWSyncErrorLogger::get_shard_oid(RGW_SYNC_ERROR_LOG_SHARD_PREFIX,
+                                               shard_id);
+  // call cls_log_trim() until it returns -ENODATA
+  for (;;) {
+    int ret = store->time_log_trim(oid, start_time, end_time,
+                                   start_marker, end_marker);
+    if (ret == -ENODATA) {
+      return 0;
+    }
+    if (ret < 0) {
+      return ret;
+    }
+    if (delay_ms) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(delay_ms));
+    }
+  }
+  // unreachable
+}
+
 int main(int argc, const char **argv)
 {
   vector<const char*> args;
@@ -2588,8 +2616,8 @@ int main(int argc, const char **argv)
                          CODE_ENVIRONMENT_UTILITY, 0);
 
   // for region -> zonegroup conversion (must happen before common_init_finish())
-  if (!g_conf->rgw_region.empty() && g_conf->rgw_zonegroup.empty()) {
-    g_conf->set_val_or_die("rgw_zonegroup", g_conf->rgw_region.c_str());
+  if (!g_conf()->rgw_region.empty() && g_conf()->rgw_zonegroup.empty()) {
+    g_conf().set_val_or_die("rgw_zonegroup", g_conf()->rgw_region.c_str());
   }
 
   common_init_finish(g_ceph_context);
@@ -2673,7 +2701,6 @@ int main(int argc, const char **argv)
   bool specified_shard_id = false;
   string client_id;
   string op_id;
-  string state_str;
   string op_mask_str;
   string quota_scope;
   string object_version;
@@ -2713,7 +2740,6 @@ int main(int argc, const char **argv)
   std::string val;
   std::ostringstream errs;
   string err;
-  long long tmp = 0;
 
   string source_zone_name;
   string source_zone; /* zone id */
@@ -2738,6 +2764,7 @@ int main(int argc, const char **argv)
   vector<string> totp_pin;
   int totp_seconds = 0;
   int totp_window = 0;
+  int trim_delay_ms = 0;
 
   for (std::vector<const char*>::iterator i = args.begin(); i != args.end(); ) {
     if (ceph_argparse_double_dash(args, i)) {
@@ -2770,8 +2797,6 @@ int main(int argc, const char **argv)
       client_id = val;
     } else if (ceph_argparse_witharg(args, i, &val, "--op-id", (char*)NULL)) {
       op_id = val;
-    } else if (ceph_argparse_witharg(args, i, &val, "--state", (char*)NULL)) {
-      state_str = val;
     } else if (ceph_argparse_witharg(args, i, &val, "--op-mask", (char*)NULL)) {
       op_mask_str = val;
     } else if (ceph_argparse_witharg(args, i, &val, "--key-type", (char*)NULL)) {
@@ -2806,11 +2831,6 @@ int main(int argc, const char **argv)
       // do nothing
     } else if (ceph_argparse_binary_flag(args, i, &commit, NULL, "--commit", (char*)NULL)) {
       // do nothing
-    } else if (ceph_argparse_witharg(args, i, &tmp, errs, "-a", "--auth-uid", (char*)NULL)) {
-      if (!errs.str().empty()) {
-	cerr << errs.str() << std::endl;
-	exit(EXIT_FAILURE);
-      }
     } else if (ceph_argparse_witharg(args, i, &val, "--min-rewrite-size", (char*)NULL)) {
       min_rewrite_size = (uint64_t)atoll(val.c_str());
     } else if (ceph_argparse_witharg(args, i, &val, "--max-rewrite-size", (char*)NULL)) {
@@ -2832,7 +2852,7 @@ int main(int argc, const char **argv)
         return EINVAL;
       }
     } else if (ceph_argparse_witharg(args, i, &val, "--max-size", (char*)NULL)) {
-      max_size = strict_iecstrtoll(val.c_str(), &err);
+      max_size = strict_iec_cast<long long>(val.c_str(), &err);
       if (!err.empty()) {
         cerr << "ERROR: failed to parse max size: " << err << std::endl;
         return EINVAL;
@@ -3064,6 +3084,8 @@ int main(int argc, const char **argv)
       totp_seconds = atoi(val.c_str());
     } else if (ceph_argparse_witharg(args, i, &val, "--totp-window", (char*)NULL)) {
       totp_window = atoi(val.c_str());
+    } else if (ceph_argparse_witharg(args, i, &val, "--trim-delay-ms", (char*)NULL)) {
+      trim_delay_ms = atoi(val.c_str());
     } else if (strncmp(*i, "-", 1) == 0) {
       cerr << "ERROR: invalid flag " << *i << std::endl;
       return EINVAL;
@@ -3159,9 +3181,9 @@ int main(int argc, const char **argv)
     exit(1);
   }
 
-  realm_name = g_conf->rgw_realm;
-  zone_name = g_conf->rgw_zone;
-  zonegroup_name = g_conf->rgw_zonegroup;
+  realm_name = g_conf()->rgw_realm;
+  zone_name = g_conf()->rgw_zone;
+  zonegroup_name = g_conf()->rgw_zonegroup;
 
   RGWStreamFlusher f(formatter, cout);
 
@@ -3228,7 +3250,6 @@ int main(int argc, const char **argv)
 			 OPT_DATA_SYNC_STATUS,
 			 OPT_DATALOG_LIST,
 			 OPT_DATALOG_STATUS,
-			 OPT_OPSTATE_LIST,
 			 OPT_REALM_GET,
 			 OPT_REALM_GET_DEFAULT,
 			 OPT_REALM_LIST,
@@ -3254,7 +3275,7 @@ int main(int argc, const char **argv)
     store = RGWStoreManager::get_raw_storage(g_ceph_context);
   } else {
     store = RGWStoreManager::get_storage(g_ceph_context, false, false, false, false, false,
-      need_cache && g_conf->rgw_cache_enabled);
+      need_cache && g_conf()->rgw_cache_enabled);
   }
   if (!store) {
     cerr << "couldn't init storage provider" << std::endl;
@@ -4986,21 +5007,14 @@ int main(int argc, const char **argv)
         cerr << "ERROR: assume role policy document is empty" << std::endl;
         return -EINVAL;
       }
-      /* The following two calls will be replaced by read_decode_json or something
-         similar when the code for AWS Policies is in places */
-      bufferlist bl;
-      int ret = read_input(assume_role_doc, bl);
-      if (ret < 0) {
-        cerr << "ERROR: failed to read input: " << cpp_strerror(-ret) << std::endl;
-        return ret;
-      }
-      JSONParser p;
-      if (!p.parse(bl.c_str(), bl.length())) {
-        cout << "ERROR: failed to parse JSON: " << assume_role_doc << std::endl;
+      bufferlist bl = bufferlist::static_from_string(assume_role_doc);
+      try {
+        const rgw::IAM::Policy p(g_ceph_context, tenant, bl);
+      } catch (rgw::IAM::PolicyParseException& e) {
+        cerr << "failed to parse policy: " << e.what() << std::endl;
         return -EINVAL;
       }
-      string trust_policy = bl.to_str();
-      RGWRole role(g_ceph_context, store, role_name, path, trust_policy, tenant);
+      RGWRole role(g_ceph_context, store, role_name, path, assume_role_doc, tenant);
       ret = role.create(true);
       if (ret < 0) {
         return -ret;
@@ -5102,28 +5116,20 @@ int main(int argc, const char **argv)
         return -EINVAL;
       }
 
-      /* The following two calls will be replaced by read_decode_json or something
-         similar, when code for AWS Policies is in place.*/
-      bufferlist bl;
-      int ret = read_input(perm_policy_doc, bl);
-      if (ret < 0) {
-        cerr << "ERROR: failed to read input: " << cpp_strerror(-ret) << std::endl;
-        return ret;
-      }
-      JSONParser p;
-      if (!p.parse(bl.c_str(), bl.length())) {
-        cout << "ERROR: failed to parse JSON: " << std::endl;
+      bufferlist bl = bufferlist::static_from_string(perm_policy_doc);
+      try {
+        const rgw::IAM::Policy p(g_ceph_context, tenant, bl);
+      } catch (rgw::IAM::PolicyParseException& e) {
+        cerr << "failed to parse perm policy: " << e.what() << std::endl;
         return -EINVAL;
       }
-      string perm_policy;
-      perm_policy = bl.c_str();
 
       RGWRole role(g_ceph_context, store, role_name, tenant);
       ret = role.get();
       if (ret < 0) {
         return -ret;
       }
-      role.set_perm_policy(policy_name, perm_policy);
+      role.set_perm_policy(policy_name, perm_policy_doc);
       ret = role.update();
       if (ret < 0) {
         return -ret;
@@ -5883,9 +5889,8 @@ next:
   }
 
   if (opt_cmd == OPT_OBJECTS_EXPIRE) {
-    int ret = store->process_expire_objects();
-    if (ret < 0) {
-      cerr << "ERROR: process_expire_objects() processing returned error: " << cpp_strerror(-ret) << std::endl;
+    if (!store->process_expire_objects()) {
+      cerr << "ERROR: process_expire_objects() processing returned error." << std::endl;
       return 1;
     }
   }
@@ -6155,7 +6160,7 @@ next:
     int ret = br.cancel();
     if (ret < 0) {
       if (ret == -EBUSY) {
-	cerr << "There is ongoing resharding, please retry after " << g_conf->rgw_reshard_bucket_lock_duration <<
+	cerr << "There is ongoing resharding, please retry after " << g_conf()->rgw_reshard_bucket_lock_duration <<
 	     " seconds " << std::endl;
       } else {
 	cerr << "Error canceling bucket " << bucket_name << " resharding: " << cpp_strerror(-ret) <<
@@ -6680,8 +6685,8 @@ next:
       return -ret;
     }
 
-    auto num_shards = g_conf->rgw_md_log_max_shards;
-    ret = crs.run(create_admin_meta_log_trim_cr(store, &http, num_shards));
+    auto num_shards = g_conf()->rgw_md_log_max_shards;
+    ret = crs.run(create_admin_meta_log_trim_cr(dpp(), store, &http, num_shards));
     if (ret < 0) {
       cerr << "automated mdlog trim failed with " << cpp_strerror(ret) << std::endl;
       return -ret;
@@ -7172,9 +7177,10 @@ next:
     }
 
     for (; shard_id < ERROR_LOGGER_SHARDS; ++shard_id) {
-      string oid = RGWSyncErrorLogger::get_shard_oid(RGW_SYNC_ERROR_LOG_SHARD_PREFIX, shard_id);
-      ret = store->time_log_trim(oid, start_time.to_real_time(), end_time.to_real_time(), start_marker, end_marker);
-      if (ret < 0 && ret != -ENODATA) {
+      ret = trim_sync_error_log(shard_id, start_time.to_real_time(),
+                                end_time.to_real_time(), start_marker,
+                                end_marker, trim_delay_ms);
+      if (ret < 0) {
         cerr << "ERROR: sync error trim: " << cpp_strerror(-ret) << std::endl;
         return -ret;
       }
@@ -7335,81 +7341,6 @@ next:
     ret = log->trim_entries(start_time.to_real_time(), end_time.to_real_time(), start_marker, end_marker);
     if (ret < 0) {
       cerr << "ERROR: trim_entries(): " << cpp_strerror(-ret) << std::endl;
-      return -ret;
-    }
-  }
-
-  if (opt_cmd == OPT_OPSTATE_LIST) {
-    RGWOpState oc(store);
-
-    int max = 1000;
-
-    void *handle;
-    oc.init_list_entries(client_id, op_id, object, &handle);
-    list<cls_statelog_entry> entries;
-    bool done;
-    formatter->open_array_section("entries");
-    do {
-      int ret = oc.list_entries(handle, max, entries, &done);
-      if (ret < 0) {
-        cerr << "oc.list_entries returned " << cpp_strerror(-ret) << std::endl;
-        oc.finish_list_entries(handle);
-        return -ret;
-      }
-
-      for (list<cls_statelog_entry>::iterator iter = entries.begin(); iter != entries.end(); ++iter) {
-        oc.dump_entry(*iter, formatter);
-      }
-
-      formatter->flush(cout);
-    } while (!done);
-    formatter->close_section();
-    formatter->flush(cout);
-    oc.finish_list_entries(handle);
-  }
-
-  if (opt_cmd == OPT_OPSTATE_SET || opt_cmd == OPT_OPSTATE_RENEW) {
-    RGWOpState oc(store);
-
-    RGWOpState::OpState state;
-    if (object.empty() || client_id.empty() || op_id.empty()) {
-      cerr << "ERROR: need to specify client_id, op_id, and object" << std::endl;
-      return EINVAL;
-    }
-    if (state_str.empty()) {
-      cerr << "ERROR: state was not specified" << std::endl;
-      return EINVAL;
-    }
-    int ret = oc.state_from_str(state_str, &state);
-    if (ret < 0) {
-      cerr << "ERROR: invalid state: " << state_str << std::endl;
-      return -ret;
-    }
-
-    if (opt_cmd == OPT_OPSTATE_SET) {
-      ret = oc.set_state(client_id, op_id, object, state);
-      if (ret < 0) {
-        cerr << "ERROR: failed to set state: " << cpp_strerror(-ret) << std::endl;
-        return -ret;
-      }
-    } else {
-      ret = oc.renew_state(client_id, op_id, object, state);
-      if (ret < 0) {
-        cerr << "ERROR: failed to renew state: " << cpp_strerror(-ret) << std::endl;
-        return -ret;
-      }
-    }
-  }
-  if (opt_cmd == OPT_OPSTATE_RM) {
-    RGWOpState oc(store);
-
-    if (object.empty() || client_id.empty() || op_id.empty()) {
-      cerr << "ERROR: need to specify client_id, op_id, and object" << std::endl;
-      return EINVAL;
-    }
-    ret = oc.remove_entry(client_id, op_id, object);
-    if (ret < 0) {
-      cerr << "ERROR: failed to set state: " << cpp_strerror(-ret) << std::endl;
       return -ret;
     }
   }

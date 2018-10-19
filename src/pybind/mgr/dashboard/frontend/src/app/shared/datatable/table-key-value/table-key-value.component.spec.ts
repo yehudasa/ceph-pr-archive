@@ -4,8 +4,8 @@ import { RouterTestingModule } from '@angular/router/testing';
 
 import { NgxDatatableModule } from '@swimlane/ngx-datatable';
 
+import { configureTestBed } from '../../../../testing/unit-test-helper';
 import { ComponentsModule } from '../../components/components.module';
-import { configureTestBed } from '../../unit-test-helper';
 import { TableComponent } from '../table/table.component';
 import { TableKeyValueComponent } from './table-key-value.component';
 
@@ -208,6 +208,24 @@ describe('TableKeyValueComponent', () => {
         { key: 'sub3', value: 56 },
         { key: 'someKey', value: 0 }
       ]);
+    });
+  });
+
+  describe('subscribe fetchData', () => {
+    it('should not subscribe fetchData of table', () => {
+      component.ngOnInit();
+      expect(component.table.fetchData.observers.length).toBe(0);
+    });
+
+    it('should call fetchData', () => {
+      let called = false;
+      component.fetchData.subscribe(() => {
+        called = true;
+      });
+      component.ngOnInit();
+      expect(component.table.fetchData.observers.length).toBe(1);
+      component.table.fetchData.emit();
+      expect(called).toBeTruthy();
     });
   });
 });

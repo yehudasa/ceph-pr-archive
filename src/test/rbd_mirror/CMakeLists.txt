@@ -11,8 +11,9 @@ set(rbd_mirror_test_srcs
   image_map/test_Policy.cc
   )
 add_library(rbd_mirror_test STATIC ${rbd_mirror_test_srcs})
-set_target_properties(rbd_mirror_test PROPERTIES COMPILE_FLAGS
-  ${UNITTEST_CXX_FLAGS})
+target_link_libraries(rbd_mirror_test
+  rbd_test_support
+  GTest::GTest)
 
 add_executable(unittest_rbd_mirror
   test_main.cc
@@ -24,6 +25,7 @@ add_executable(unittest_rbd_mirror
   test_mock_InstanceReplayer.cc
   test_mock_InstanceWatcher.cc
   test_mock_LeaderWatcher.cc
+  test_mock_PoolReplayer.cc
   test_mock_PoolWatcher.cc
   image_deleter/test_mock_RemoveRequest.cc
   image_deleter/test_mock_SnapshotPurgeRequest.cc
@@ -39,9 +41,8 @@ add_executable(unittest_rbd_mirror
   image_sync/test_mock_SyncPointPruneRequest.cc
   pool_watcher/test_mock_RefreshImagesRequest.cc
   )
-add_ceph_unittest(unittest_rbd_mirror parallel)
-set_target_properties(unittest_rbd_mirror PROPERTIES COMPILE_FLAGS
-  ${UNITTEST_CXX_FLAGS})
+add_ceph_unittest(unittest_rbd_mirror)
+
 add_dependencies(unittest_rbd_mirror
   cls_journal
   cls_lock
@@ -69,8 +70,7 @@ target_link_libraries(unittest_rbd_mirror
 add_executable(ceph_test_rbd_mirror
   test_main.cc
   )
-set_target_properties(ceph_test_rbd_mirror PROPERTIES COMPILE_FLAGS
-  ${UNITTEST_CXX_FLAGS})
+
 target_link_libraries(ceph_test_rbd_mirror
   rbd_mirror_test
   rbd_mirror_internal
@@ -88,8 +88,6 @@ target_link_libraries(ceph_test_rbd_mirror
 
 add_executable(ceph_test_rbd_mirror_random_write
   random_write.cc)
-set_target_properties(ceph_test_rbd_mirror_random_write PROPERTIES COMPILE_FLAGS
-  ${UNITTEST_CXX_FLAGS})
 target_link_libraries(ceph_test_rbd_mirror_random_write
   librbd librados global)
 

@@ -29,6 +29,7 @@
 #include "include/filepath.h"
 
 #include "MDSCacheObject.h"
+#include "MDSContext.h"
 #include "SimpleLock.h"
 #include "LocalLock.h"
 #include "ScrubHeader.h"
@@ -36,7 +37,6 @@
 class CInode;
 class CDir;
 class Locker;
-class Message;
 class CDentry;
 class LogSegment;
 
@@ -206,7 +206,7 @@ public:
   void _put() override;
 
   // auth pins
-  bool can_auth_pin() const override;
+  bool can_auth_pin(int *err_ret=nullptr) const override;
   void auth_pin(void *by) override;
   void auth_unpin(void *by) override;
   void adjust_nested_auth_pins(int adjustment, int diradj, void *by);
@@ -303,12 +303,12 @@ public:
 
   // -- locking --
   SimpleLock* get_lock(int type) override {
-    assert(type == CEPH_LOCK_DN);
+    ceph_assert(type == CEPH_LOCK_DN);
     return &lock;
   }
   void set_object_info(MDSCacheObjectInfo &info) override;
   void encode_lock_state(int type, bufferlist& bl) override;
-  void decode_lock_state(int type, bufferlist& bl) override;
+  void decode_lock_state(int type, const bufferlist& bl) override;
 
   // ---------------------------------------------
   // replicas (on clients)

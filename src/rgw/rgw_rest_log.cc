@@ -22,7 +22,7 @@
 #include "rgw_data_sync.h"
 #include "rgw_common.h"
 #include "common/errno.h"
-#include "include/assert.h"
+#include "include/ceph_assert.h"
 
 #define dout_context g_ceph_context
 #define LOG_CLASS_LIST_MAX_ENTRIES (1000)
@@ -914,7 +914,7 @@ void RGWOp_BILog_Status::execute()
     ldout(s->cct, 4) << "failed to read bucket info: " << cpp_strerror(http_ret) << dendl;
     return;
   }
-  http_ret = rgw_bucket_sync_status(store, source_zone, info, &status);
+  http_ret = rgw_bucket_sync_status(this, store, source_zone, info, &status);
 }
 
 void RGWOp_BILog_Status::send_response()

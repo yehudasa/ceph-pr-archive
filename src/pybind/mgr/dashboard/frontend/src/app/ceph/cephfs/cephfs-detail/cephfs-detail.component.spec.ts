@@ -6,19 +6,21 @@ import { RouterTestingModule } from '@angular/router/testing';
 import { ChartsModule } from 'ng2-charts/ng2-charts';
 import { BsDropdownModule, ProgressbarModule, TabsModule } from 'ngx-bootstrap';
 
+import { configureTestBed } from '../../../../testing/unit-test-helper';
 import { CephfsService } from '../../../shared/api/cephfs.service';
 import { SharedModule } from '../../../shared/shared.module';
-import { configureTestBed } from '../../../shared/unit-test-helper';
 import { CephfsDetailComponent } from './cephfs-detail.component';
 
 @Component({ selector: 'cd-cephfs-chart', template: '' })
 class CephfsChartStubComponent {
-  @Input() mdsCounter: any;
+  @Input()
+  mdsCounter: any;
 }
 
 @Component({ selector: 'cd-cephfs-clients', template: '' })
 class CephfsClientsStubComponent {
-  @Input() mdsCounter: any;
+  @Input()
+  mdsCounter: any;
 }
 
 describe('CephfsDetailComponent', () => {

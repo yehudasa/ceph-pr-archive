@@ -43,9 +43,21 @@ void DeviceState::set_life_expectancy(utime_t from, utime_t to, utime_t now)
 {
   life_expectancy = make_pair(from, to);
   life_expectancy_stamp = now;
-  metadata["life_expectancy_min"] = stringify(life_expectancy.first);
-  metadata["life_expectancy_max"] = stringify(life_expectancy.second);
-  metadata["life_expectancy_stamp"] = stringify(life_expectancy_stamp);
+  if (from != utime_t()) {
+    metadata["life_expectancy_min"] = from;
+  } else {
+    metadata["life_expectancy_min"] = "";
+  }
+  if (to != utime_t()) {
+    metadata["life_expectancy_max"] = to;
+  } else {
+    metadata["life_expectancy_max"] = "";
+  }
+  if (now != utime_t()) {
+    metadata["life_expectancy_stamp"] = stringify(now);
+  } else {
+    metadata["life_expectancy_stamp"] = "";
+  }
 }
 
 void DeviceState::rm_life_expectancy()
@@ -140,15 +152,15 @@ void DaemonStateIndex::insert(DaemonStatePtr dm)
 
 void DaemonStateIndex::_erase(const DaemonKey& dmk)
 {
-  assert(lock.is_wlocked());
+  ceph_assert(lock.is_wlocked());
 
   const auto to_erase = all.find(dmk);
-  assert(to_erase != all.end());
+  ceph_assert(to_erase != all.end());
   const auto dm = to_erase->second;
 
   for (auto& i : dm->devices) {
     auto d = _get_or_create_device(i.first);
-    assert(d->daemons.count(dmk));
+    ceph_assert(d->daemons.count(dmk));
     d->daemons.erase(dmk);
     d->devnames.erase(make_pair(dm->hostname, i.second));
     if (d->empty()) {
@@ -287,11 +299,6 @@ void DaemonPerfCounters::update(MMgrReport *report)
     }
   }
   DECODE_FINISH(p);
-}
-
-uint64_t PerfCounterInstance::get_current() const
-{
-  return buffer.front().v;
 }
 
 void PerfCounterInstance::push(utime_t t, uint64_t const &v)

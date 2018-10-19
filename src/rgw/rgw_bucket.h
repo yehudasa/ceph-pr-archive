@@ -408,9 +408,14 @@ struct RGWDataChangesLogInfo {
   void decode_json(JSONObj *obj);
 };
 
+namespace rgw {
+struct BucketChangeObserver;
+}
+
 class RGWDataChangesLog {
   CephContext *cct;
   RGWRados *store;
+  rgw::BucketChangeObserver *observer = nullptr;
 
   int num_shards;
   string *oids;
@@ -437,7 +442,7 @@ class RGWDataChangesLog {
     }
   };
 
-  typedef ceph::shared_ptr<ChangeStatus> ChangeStatusPtr;
+  typedef std::shared_ptr<ChangeStatus> ChangeStatusPtr;
 
   lru_map<rgw_bucket_shard, ChangeStatusPtr> changes;
 
@@ -520,6 +525,10 @@ public:
 
   void mark_modified(int shard_id, const rgw_bucket_shard& bs);
   void read_clear_modified(map<int, set<string> > &modified);
+
+  void set_observer(rgw::BucketChangeObserver *observer) {
+    this->observer = observer;
+  }
 
   bool going_down();
 };

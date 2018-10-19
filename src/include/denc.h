@@ -38,10 +38,9 @@
 #include <boost/intrusive/set.hpp>
 #include <boost/optional.hpp>
 
-#include "include/assert.h"	// boost clobbers this
+#include "include/ceph_assert.h"	// boost clobbers this
 #include "include/intarith.h"
 #include "include/int_types.h"
-#include "include/memory.h"
 
 #include "buffer.h"
 #include "byteorder.h"
@@ -98,7 +97,7 @@ inline constexpr bool denc_supported = denc_traits<T>::supported;
     snprintf(fn, sizeof(fn),						\
 	     ENCODE_STRINGIFY(ENCODE_DUMP_PATH) "/%s__%d.%x", #Type,		\
 	     getpid(), i++);						\
-    int fd = ::open(fn, O_WRONLY|O_TRUNC|O_CREAT, 0644);		\
+    int fd = ::open(fn, O_WRONLY|O_TRUNC|O_CREAT|O_CLOEXEC, 0644);		\
     if (fd >= 0) {							\
       size_t len = p.get_pos() - __denc_dump_pre;			\
       int r = ::write(fd, __denc_dump_pre, len);			\
@@ -309,8 +308,8 @@ struct denc_traits<
 // otype == external type, i.e., the type on the wire
 
 // NOTE: the overload resolution ensures that the legacy encode/decode methods
-// defined for int types is prefered to the ones  defined using the specialized
-// template, and hence get selected. This machinary prevents these these from
+// defined for int types is preferred to the ones  defined using the specialized
+// template, and hence get selected. This machinery prevents these these from
 // getting glued into the legacy encode/decode methods; the overhead of setting
 // up a contiguous_appender etc is likely to be slower.
 namespace _denc {
@@ -1094,8 +1093,8 @@ public:
   static void bound_encode(const container& s, size_t& p, uint64_t f = 0) {
     if constexpr (traits::bounded) {
       if constexpr (traits::featured) {
-        size_t elem_size = 0;
         if (!s.empty()) {
+          size_t elem_size = 0;
           denc(*s.begin(), elem_size, f);
           p += elem_size * s.size();
         }
@@ -1632,7 +1631,7 @@ inline std::enable_if_t<traits::supported && !traits::featured> decode_nohead(
 			   uint32_t *struct_len) {			\
     const char *pos = p.get_pos();					\
     char *end = *start_pos + *struct_len;				\
-    assert(pos <= end);							\
+    ceph_assert(pos <= end);							\
     if (pos < end) {							\
       p.advance(end - pos);						\
     }									\

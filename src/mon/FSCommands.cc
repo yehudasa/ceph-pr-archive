@@ -95,7 +95,7 @@ class FsNewHandler : public FileSystemCommandHandler
       const cmdmap_t& cmdmap,
       std::stringstream &ss) override
   {
-    assert(m_paxos->is_plugged());
+    ceph_assert(m_paxos->is_plugged());
 
     string metadata_name;
     cmd_getval(g_ceph_context, cmdmap, "metadata", metadata_name);
@@ -103,19 +103,6 @@ class FsNewHandler : public FileSystemCommandHandler
     if (metadata < 0) {
       ss << "pool '" << metadata_name << "' does not exist";
       return -ENOENT;
-    }
-
-    string force_str;
-    cmd_getval(g_ceph_context,cmdmap, "force", force_str);
-    bool force = (force_str == "--force");
-    const pool_stat_t *stat = mon->mgrstatmon()->get_pool_stat(metadata);
-    if (stat) {
-      int64_t metadata_num_objects = stat->stats.sum.num_objects;
-      if (!force && metadata_num_objects > 0) {
-	ss << "pool '" << metadata_name
-	   << "' already contains some objects. Use an empty pool instead.";
-	return -EINVAL;
-      }
     }
 
     string data_name;
@@ -152,6 +139,19 @@ class FsNewHandler : public FileSystemCommandHandler
       }
     }
 
+    string force_str;
+    cmd_getval(g_ceph_context,cmdmap, "force", force_str);
+    bool force = (force_str == "--force");
+    const pool_stat_t *stat = mon->mgrstatmon()->get_pool_stat(metadata);
+    if (stat) {
+      int64_t metadata_num_objects = stat->stats.sum.num_objects;
+      if (!force && metadata_num_objects > 0) {
+	ss << "pool '" << metadata_name
+	   << "' already contains some objects. Use an empty pool instead.";
+	return -EINVAL;
+      }
+    }
+
     if (fsmap.filesystem_count() > 0
         && !fsmap.get_enable_multiple()) {
       ss << "Creation of multiple filesystems is disabled.  To enable "
@@ -174,9 +174,9 @@ class FsNewHandler : public FileSystemCommandHandler
     }
 
     pg_pool_t const *data_pool = mon->osdmon()->osdmap.get_pg_pool(data);
-    assert(data_pool != NULL);  // Checked it existed above
+    ceph_assert(data_pool != NULL);  // Checked it existed above
     pg_pool_t const *metadata_pool = mon->osdmon()->osdmap.get_pg_pool(metadata);
-    assert(metadata_pool != NULL);  // Checked it existed above
+    ceph_assert(metadata_pool != NULL);  // Checked it existed above
 
     int r = _check_pool(mon->osdmon()->osdmap, data, false, force, &ss);
     if (r < 0) {
@@ -210,7 +210,7 @@ class FsNewHandler : public FileSystemCommandHandler
     // assign a standby to rank 0 to avoid health warnings
     std::string _name;
     mds_gid_t gid = fsmap.find_replacement_for({fs->fscid, 0}, _name,
-        g_conf->mon_force_standby_active);
+        g_conf()->mon_force_standby_active);
 
     if (gid != MDS_GID_NONE) {
       const auto &info = fsmap.get_info_gid(gid);
@@ -529,6 +529,18 @@ public:
       {
         fs->mds_map.set_session_autoclose((uint32_t)n);
       });
+    } else if (var == "min_compat_client") {
+      int vno = ceph_release_from_name(val.c_str());
+      if (vno <= 0) {
+	ss << "version " << val << " is not recognized";
+	return -EINVAL;
+      }
+      fsmap.modify_filesystem(
+	  fs->fscid,
+	  [vno](std::shared_ptr<Filesystem> fs)
+	{
+	  fs->mds_map.set_min_compat_client((uint8_t)vno);
+	});
     } else {
       ss << "unknown variable " << var;
       return -EINVAL;
@@ -556,7 +568,7 @@ class AddDataPoolHandler : public FileSystemCommandHandler
       const cmdmap_t& cmdmap,
       std::stringstream &ss) override
   {
-    assert(m_paxos->is_plugged());
+    ceph_assert(m_paxos->is_plugged());
 
     string poolname;
     cmd_getval(g_ceph_context, cmdmap, "pool", poolname);
@@ -602,7 +614,7 @@ class AddDataPoolHandler : public FileSystemCommandHandler
     }
     mon->osdmon()->do_application_enable(poolid,
 					 pg_pool_t::APPLICATION_NAME_CEPHFS,
-					 "data", poolname);
+					 "data", fs_name);
     mon->osdmon()->propose_pending();
 
     fsmap.modify_filesystem(
@@ -696,7 +708,7 @@ class RemoveFilesystemHandler : public FileSystemCommandHandler
     std::vector<mds_gid_t> to_fail;
     // There may be standby_replay daemons left here
     for (const auto &i : fs->mds_map.get_mds_info()) {
-      assert(i.second.state == MDSMap::STATE_STANDBY_REPLAY);
+      ceph_assert(i.second.state == MDSMap::STATE_STANDBY_REPLAY);
       to_fail.push_back(i.first);
     }
 
@@ -800,7 +812,7 @@ class RemoveDataPoolHandler : public FileSystemCommandHandler
       }
     }
 
-    assert(poolid >= 0);  // Checked by parsing code above
+    ceph_assert(poolid >= 0);  // Checked by parsing code above
 
     if (fs->mds_map.get_first_data_pool() == poolid) {
       ss << "cannot remove default data pool";
@@ -882,7 +894,7 @@ int FileSystemCommandHandler::parse_bool(
       bool *result,
       std::ostream &ss)
 {
-  assert(result != nullptr);
+  ceph_assert(result != nullptr);
 
   string interr;
   int64_t n = strict_strtoll(bool_str.c_str(), 10, &interr);
@@ -908,7 +920,7 @@ int FileSystemCommandHandler::_check_pool(
     bool force,
     std::stringstream *ss) const
 {
-  assert(ss != NULL);
+  ceph_assert(ss != NULL);
 
   const pg_pool_t *pool = osd_map.get_pg_pool(pool_id);
   if (!pool) {
@@ -935,7 +947,7 @@ int FileSystemCommandHandler::_check_pool(
     // write operations like modify+truncate we care about support for)
     const pg_pool_t *write_tier = osd_map.get_pg_pool(
         pool->write_tier);
-    assert(write_tier != NULL);  // OSDMonitor shouldn't allow DNE tier
+    ceph_assert(write_tier != NULL);  // OSDMonitor shouldn't allow DNE tier
     if (write_tier->cache_mode == pg_pool_t::CACHEMODE_FORWARD
         || write_tier->cache_mode == pg_pool_t::CACHEMODE_READONLY) {
       *ss << "EC pool '" << pool_name << "' has a write tier ("

@@ -12,10 +12,10 @@
 #include "crimson/thread/Condition.h"
 #include "crimson/thread/Throttle.h"
 
-#include <core/alien.hh>
-#include <core/app-template.hh>
-#include <core/future-util.hh>
-#include <core/reactor.hh>
+#include <seastar/core/alien.hh>
+#include <seastar/core/app-template.hh>
+#include <seastar/core/future-util.hh>
+#include <seastar/core/reactor.hh>
 
 
 enum class echo_role {
@@ -29,6 +29,9 @@ struct DummyAuthAuthorizer : public AuthAuthorizer {
     : AuthAuthorizer(CEPH_AUTH_CEPHX)
   {}
   bool verify_reply(bufferlist::const_iterator&) override {
+    return true;
+  }
+  bool add_challenge(CephContext*, bufferlist&) override {
     return true;
   }
 };
@@ -102,7 +105,7 @@ struct Server {
   Server(CephContext* cct, const entity_inst_t& entity)
     : dispatcher(cct)
   {
-    msgr.reset(Messenger::create(cct, cct->_conf->get_val<string>("ms_type"),
+    msgr.reset(Messenger::create(cct, cct->_conf.get_val<string>("ms_type"),
                                  entity.name, "pong", entity.addr.get_nonce(), 0));
     msgr->set_cluster_protocol(CEPH_OSD_PROTOCOL);
     msgr->set_default_policy(Messenger::Policy::stateless_server(0));
@@ -129,13 +132,6 @@ struct Server {
         replied = true;
       }
       on_reply.notify_one();
-    }
-    bool ms_verify_authorizer(Connection *con, int peer_type, int protocol,
-                              bufferlist& authorizer,
-                              bufferlist& authorizer_reply,
-                              bool& isvalid, CryptoKey& session_key) override {
-      isvalid = true;
-      return true;
     }
     bool ms_dispatch(Message*) override {
       ceph_abort();
@@ -164,7 +160,7 @@ struct Client {
   Client(CephContext *cct)
     : dispatcher(cct)
   {
-    msgr.reset(Messenger::create(cct, cct->_conf->get_val<string>("ms_type"),
+    msgr.reset(Messenger::create(cct, cct->_conf.get_val<string>("ms_type"),
                                  entity_name_t::CLIENT(-1), "ping",
                                  getpid(), 0));
     msgr->set_cluster_protocol(CEPH_OSD_PROTOCOL);
@@ -191,13 +187,6 @@ struct Client {
         replied = true;
       }
       on_reply.notify_one();
-    }
-    bool ms_verify_authorizer(Connection *con, int peer_type, int protocol,
-                              bufferlist& authorizer,
-                              bufferlist& authorizer_reply,
-                              bool& isvalid, CryptoKey& session_key) override {
-      isvalid = true;
-      return true;
     }
     bool ms_dispatch(Message*) override {
       ceph_abort();

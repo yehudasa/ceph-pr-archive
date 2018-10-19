@@ -23,12 +23,28 @@
 #include "include/uuid.h"
 #include "blkdev.h"
 
+int get_device_by_path(const char *path, char* partition, char* device,
+		       size_t max)
+{
+  int fd = ::open(path, O_RDONLY|O_DIRECTORY);
+  if (fd < 0) {
+    return -errno;
+  }
+  int r = get_device_by_fd(fd, partition, device, max);
+  ::close(fd);
+  return r;
+}
+
+
 #ifdef __linux__
 #include <libudev.h>
 #include <linux/fs.h>
 #include <blkid/blkid.h>
 
 #include <set>
+
+#include "common/SubProcess.h"
+#include "common/errno.h"
 
 
 #define UUID_LEN 36
@@ -307,7 +323,7 @@ int _get_vdo_stats_handle(const char *devname, std::string *vdo_name)
     target[r] = 0;
     if (expect == target) {
       snprintf(fn, sizeof(fn), "/sys/kvdo/%s/statistics", de->d_name);
-      vdo_fd = ::open(fn, O_RDONLY); //DIRECTORY);
+      vdo_fd = ::open(fn, O_RDONLY|O_CLOEXEC); //DIRECTORY);
       if (vdo_fd >= 0) {
 	*vdo_name = de->d_name;
 	break;
@@ -340,7 +356,7 @@ int get_vdo_stats_handle(const char *devname, std::string *vdo_name)
 int64_t get_vdo_stat(int vdo_fd, const char *property)
 {
   int64_t ret = 0;
-  int fd = ::openat(vdo_fd, property, O_RDONLY);
+  int fd = ::openat(vdo_fd, property, O_RDONLY|O_CLOEXEC);
   if (fd < 0) {
     return 0;
   }
@@ -384,12 +400,10 @@ std::string get_device_id(const std::string& devname)
 
   udev = udev_new();
   if (!udev) {
-    //derr << "failed to run udev_new(), when calling for device " << devname << dendl;
     return {};
   }
   dev = udev_device_new_from_subsystem_sysname(udev, "block", devname.c_str());
   if (!dev) {
-    //derr << "failed to run udev_device_new_from_subsystem_sysname() for " << devname << dendl;
     udev_unref(udev);
     return {};
   }
@@ -405,7 +419,6 @@ std::string get_device_id(const std::string& devname)
   udev_unref(udev);
 
   if (!device_id.empty()) {
-    //dout << devname << " serial number: " << data << dendl;
     std::replace(device_id.begin(), device_id.end(), ' ', '_');
     return device_id;
   }
@@ -413,7 +426,6 @@ std::string get_device_id(const std::string& devname)
   // either udev_device_get_property_value() failed, or succeeded but
   // returned nothing; trying to read from files.  note that the 'vendor'
   // file rarely contains the actual vendor; it's usually 'ATA'.
-  //derr << "udev could not retrieve serial number of " << devname << dendl;
   std::string model, serial;
   model = get_block_device_string_property_wrap(devname, "device/model");
   serial = get_block_device_string_property_wrap(devname, "device/serial");
@@ -434,12 +446,50 @@ std::string get_block_device_string_property_wrap(const std::string &devname,
   std::string prop_val;
   int ret = get_block_device_string_property(devname.c_str(), property.c_str(), buff, sizeof(buff));
   if (ret < 0) {
-    //derr << "Could not retrieve content of " << property << " file of " << devname << dendl;
     return {};
   }
   prop_val = buff;
   return prop_val;
 }
+
+int block_device_run_smartctl(const char *device, int timeout,
+			      std::string *result)
+{
+  // when using --json, smartctl will report its errors in JSON format to stdout 
+  SubProcessTimed smartctl(
+    "sudo", SubProcess::CLOSE, SubProcess::PIPE, SubProcess::CLOSE,
+    timeout);
+  smartctl.add_cmd_args(
+    "smartctl",
+    "-a",
+    //"-x",
+    "--json",
+    device,
+    NULL);
+
+  int ret = smartctl.spawn();
+  if (ret != 0) {
+    *result = std::string("error spawning smartctl: ") + smartctl.err();
+    return ret;
+  }
+
+  bufferlist output;
+  ret = output.read_fd(smartctl.get_stdout(), 100*1024);
+  if (ret < 0) {
+    *result = std::string("failed read smartctl output: ") + cpp_strerror(-ret);
+  } else {
+    ret = 0;
+    *result = output.to_str();
+  }
+
+  if (smartctl.join() != 0) {
+    *result = std::string("smartctl returned an error:") + smartctl.err();
+    return -EINVAL;
+  }
+
+  return ret;
+}
+
 
 #elif defined(__APPLE__)
 #include <sys/disk.h>
@@ -549,6 +599,12 @@ std::string get_device_id(const std::string& devname)
   return std::string();
 }
 
+int block_device_run_smartctl(const char *device, int timeout,
+			      std::string *result)
+{
+  return -EOPNOTSUPP;
+}
+
 #else
 int get_block_device_size(int fd, int64_t *psize)
 {
@@ -597,6 +653,12 @@ std::string get_device_id(const std::string& devname)
 {
   // not implemented
   return std::string();
+}
+
+int block_device_run_smartctl(const char *device, int timeout,
+			      std::string *result)
+{
+  return -EOPNOTSUPP;
 }
 
 #endif

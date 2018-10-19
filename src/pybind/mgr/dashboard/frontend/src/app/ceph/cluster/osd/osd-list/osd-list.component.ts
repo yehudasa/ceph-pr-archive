@@ -5,9 +5,13 @@ import { BsModalRef, BsModalService } from 'ngx-bootstrap';
 import { OsdService } from '../../../../shared/api/osd.service';
 import { TableComponent } from '../../../../shared/datatable/table/table.component';
 import { CellTemplate } from '../../../../shared/enum/cell-template.enum';
+import { CdTableAction } from '../../../../shared/models/cd-table-action';
 import { CdTableColumn } from '../../../../shared/models/cd-table-column';
 import { CdTableSelection } from '../../../../shared/models/cd-table-selection';
+import { Permission } from '../../../../shared/models/permissions';
 import { DimlessBinaryPipe } from '../../../../shared/pipes/dimless-binary.pipe';
+import { AuthStorageService } from '../../../../shared/services/auth-storage.service';
+import { OsdFlagsModalComponent } from '../osd-flags-modal/osd-flags-modal.component';
 import { OsdScrubModalComponent } from '../osd-scrub-modal/osd-scrub-modal.component';
 
 @Component({
@@ -16,20 +20,41 @@ import { OsdScrubModalComponent } from '../osd-scrub-modal/osd-scrub-modal.compo
   styleUrls: ['./osd-list.component.scss']
 })
 export class OsdListComponent implements OnInit {
-  @ViewChild('statusColor') statusColor: TemplateRef<any>;
-  @ViewChild('osdUsageTpl') osdUsageTpl: TemplateRef<any>;
-  @ViewChild(TableComponent) tableComponent: TableComponent;
+  @ViewChild('statusColor')
+  statusColor: TemplateRef<any>;
+  @ViewChild('osdUsageTpl')
+  osdUsageTpl: TemplateRef<any>;
+  @ViewChild(TableComponent)
+  tableComponent: TableComponent;
 
+  permission: Permission;
+  tableActions: CdTableAction[];
   bsModalRef: BsModalRef;
   osds = [];
   columns: CdTableColumn[];
   selection = new CdTableSelection();
 
   constructor(
+    private authStorageService: AuthStorageService,
     private osdService: OsdService,
     private dimlessBinaryPipe: DimlessBinaryPipe,
     private modalService: BsModalService
-  ) {}
+  ) {
+    this.permission = this.authStorageService.getPermissions().osd;
+    const scrubAction: CdTableAction = {
+      permission: 'update',
+      icon: 'fa-stethoscope',
+      click: () => this.scrubAction(false),
+      name: 'Scrub'
+    };
+    const deleteAction: CdTableAction = {
+      permission: 'update',
+      icon: 'fa-cog',
+      click: () => this.scrubAction(true),
+      name: 'Deep Scrub'
+    };
+    this.tableActions = [scrubAction, deleteAction];
+  }
 
   ngOnInit() {
     this.columns = [
@@ -65,6 +90,7 @@ export class OsdListComponent implements OnInit {
         osd.collectedStates = this.collectStates(osd);
         osd.stats_history.out_bytes = osd.stats_history.op_out_bytes.map((i) => i[1]);
         osd.stats_history.in_bytes = osd.stats_history.op_in_bytes.map((i) => i[1]);
+        osd.cdIsBinary = true;
         return osd;
       });
     });
@@ -90,5 +116,9 @@ export class OsdListComponent implements OnInit {
     };
 
     this.bsModalRef = this.modalService.show(OsdScrubModalComponent, { initialState });
+  }
+
+  configureClusterAction() {
+    this.bsModalRef = this.modalService.show(OsdFlagsModalComponent, {});
   }
 }

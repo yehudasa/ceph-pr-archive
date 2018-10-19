@@ -168,7 +168,7 @@ TEST_F(LibRadosMiscPP, WaitOSDMapPP) {
 TEST_F(LibRadosMiscPP, LongNamePP) {
   bufferlist bl;
   bl.append("content");
-  int maxlen = g_conf->osd_max_object_name_len;
+  int maxlen = g_conf()->osd_max_object_name_len;
   ASSERT_EQ(0, ioctx.write(string(maxlen/2, 'a').c_str(), bl, bl.length(), 0));
   ASSERT_EQ(0, ioctx.write(string(maxlen-1, 'a').c_str(), bl, bl.length(), 0));
   ASSERT_EQ(0, ioctx.write(string(maxlen, 'a').c_str(), bl, bl.length(), 0));
@@ -179,7 +179,7 @@ TEST_F(LibRadosMiscPP, LongNamePP) {
 TEST_F(LibRadosMiscPP, LongLocatorPP) {
   bufferlist bl;
   bl.append("content");
-  int maxlen = g_conf->osd_max_object_name_len;
+  int maxlen = g_conf()->osd_max_object_name_len;
   ioctx.locator_set_key(
     string((maxlen/2), 'a'));
   ASSERT_EQ(
@@ -220,7 +220,7 @@ TEST_F(LibRadosMiscPP, LongLocatorPP) {
 TEST_F(LibRadosMiscPP, LongNSpacePP) {
   bufferlist bl;
   bl.append("content");
-  int maxlen = g_conf->osd_max_object_namespace_len;
+  int maxlen = g_conf()->osd_max_object_namespace_len;
   ioctx.set_namespace(
     string((maxlen/2), 'a'));
   ASSERT_EQ(
@@ -261,7 +261,7 @@ TEST_F(LibRadosMiscPP, LongNSpacePP) {
 TEST_F(LibRadosMiscPP, LongAttrNamePP) {
   bufferlist bl;
   bl.append("content");
-  int maxlen = g_conf->osd_max_attr_name_len;
+  int maxlen = g_conf()->osd_max_attr_name_len;
   ASSERT_EQ(0, ioctx.setxattr("bigattrobj", string(maxlen/2, 'a').c_str(), bl));
   ASSERT_EQ(0, ioctx.setxattr("bigattrobj", string(maxlen-1, 'a').c_str(), bl));
   ASSERT_EQ(0, ioctx.setxattr("bigattrobj", string(maxlen, 'a').c_str(), bl));
@@ -733,17 +733,17 @@ TEST_F(LibRadosMiscPP, BigAttrPP) {
 
   bufferlist got;
 
-  cout << "osd_max_attr_size = " << g_conf->osd_max_attr_size << std::endl;
-  if (g_conf->osd_max_attr_size) {
+  cout << "osd_max_attr_size = " << g_conf()->osd_max_attr_size << std::endl;
+  if (g_conf()->osd_max_attr_size) {
     bl.clear();
     got.clear();
-    bl.append(buffer::create(g_conf->osd_max_attr_size));
+    bl.append(buffer::create(g_conf()->osd_max_attr_size));
     ASSERT_EQ(0, ioctx.setxattr("foo", "one", bl));
     ASSERT_EQ((int)bl.length(), ioctx.getxattr("foo", "one", got));
     ASSERT_TRUE(bl.contents_equal(got));
 
     bl.clear();
-    bl.append(buffer::create(g_conf->osd_max_attr_size+1));
+    bl.append(buffer::create(g_conf()->osd_max_attr_size+1));
     ASSERT_EQ(-EFBIG, ioctx.setxattr("foo", "one", bl));
   } else {
     cout << "osd_max_attr_size == 0; skipping test" << std::endl;
@@ -752,7 +752,7 @@ TEST_F(LibRadosMiscPP, BigAttrPP) {
   for (int i=0; i<1000; i++) {
     bl.clear();
     got.clear();
-    bl.append(buffer::create(std::min<uint64_t>(g_conf->osd_max_attr_size,
+    bl.append(buffer::create(std::min<uint64_t>(g_conf()->osd_max_attr_size,
 						1024)));
     char n[10];
     snprintf(n, sizeof(n), "a%d", i);
@@ -812,7 +812,7 @@ TEST_F(LibRadosMiscPP, CopyPP) {
   }
 
   // do a big object
-  bl.append(buffer::create(g_conf->osd_copyfrom_max_chunk * 3));
+  bl.append(buffer::create(g_conf()->osd_copyfrom_max_chunk * 3));
   bl.zero();
   bl.append("tail");
   blc = bl;
@@ -923,7 +923,7 @@ TEST_F(LibRadosMiscPP, CopyScrubPP) {
   bufferlist inbl, bl, x;
   for (int i=0; i<100; ++i)
     x.append("barrrrrrrrrrrrrrrrrrrrrrrrrr");
-  bl.append(buffer::create(g_conf->osd_copyfrom_max_chunk * 3));
+  bl.append(buffer::create(g_conf()->osd_copyfrom_max_chunk * 3));
   bl.zero();
   bl.append("tail");
   bufferlist cbl;
@@ -1376,6 +1376,20 @@ TEST_F(LibRadosMiscECPP, CompareExtentRange) {
   ObjectReadOperation read2;
   read2.cmpext(2097152, bl3, nullptr);
   ASSERT_EQ(0, ioctx.operate("foo", &read2, nullptr));
+}
+
+TEST_F(LibRadosMisc, MinCompatOSD) {
+  int8_t require_osd_release;
+  ASSERT_EQ(0, rados_get_min_compatible_osd(cluster, &require_osd_release));
+  ASSERT_LE(-1, require_osd_release);
+  ASSERT_GT(CEPH_RELEASE_MAX, require_osd_release);
+}
+
+TEST_F(LibRadosMiscPP, MinCompatOSD) {
+  int8_t require_osd_release;
+  ASSERT_EQ(0, cluster.get_min_compatible_osd(&require_osd_release));
+  ASSERT_LE(-1, require_osd_release);
+  ASSERT_GT(CEPH_RELEASE_MAX, require_osd_release);
 }
 
 TEST_F(LibRadosMisc, MinCompatClient) {

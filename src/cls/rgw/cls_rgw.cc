@@ -311,12 +311,20 @@ static void split_key(const string& key, list<string>& vals)
   }
 }
 
+static string escape_str(const string& s)
+{
+  int len = escape_json_attr_len(s.c_str(), s.size());
+  std::string escaped(len, 0);
+  escape_json_attr(s.c_str(), s.size(), escaped.data());
+  return escaped;
+}
+
 /*
  * list index key structure:
  *
  * <obj name>\0[v<ver>\0i<instance id>]
  */
-static void decode_list_index_key(const string& index_key, cls_rgw_obj_key *key, uint64_t *ver)
+static int decode_list_index_key(const string& index_key, cls_rgw_obj_key *key, uint64_t *ver)
 {
   size_t len = strlen(index_key.c_str());
 
@@ -325,19 +333,25 @@ static void decode_list_index_key(const string& index_key, cls_rgw_obj_key *key,
 
   if (len == index_key.size()) {
     key->name = index_key;
-    return;
+    return 0;
   }
 
   list<string> vals;
   split_key(index_key, vals);
 
-  assert(!vals.empty());
+  if (vals.empty()) {
+    CLS_LOG(0, "ERROR: %s(): bad index_key (%s): split_key() returned empty vals", __func__, escape_str(index_key).c_str());
+    return -EIO;
+  }
 
   list<string>::iterator iter = vals.begin();
   key->name = *iter;
   ++iter;
 
-  assert(iter != vals.end());
+  if (iter == vals.end()) {
+    CLS_LOG(0, "ERROR: %s(): bad index_key (%s): no vals", __func__, escape_str(index_key).c_str());
+    return -EIO;
+  }
 
   for (; iter != vals.end(); ++iter) {
     string& val = *iter;
@@ -347,9 +361,14 @@ static void decode_list_index_key(const string& index_key, cls_rgw_obj_key *key,
       string err;
       const char *s = val.c_str() + 1;
       *ver = strict_strtoll(s, 10, &err);
-      assert(err.empty());
+      if (!err.empty()) {
+        CLS_LOG(0, "ERROR: %s(): bad index_key (%s): could not parse val (v=%s)", __func__, escape_str(index_key).c_str(), s);
+        return -EIO;
+      }
     }
   }
+
+  return 0;
 }
 
 static int read_bucket_header(cls_method_context_t hctx, struct rgw_bucket_dir_header *header)
@@ -430,10 +449,15 @@ int rgw_bucket_list(cls_method_context_t hctx, bufferlist *in, bufferlist *out)
 
       cls_rgw_obj_key key;
       uint64_t ver;
-      decode_list_index_key(kiter->first, &key, &ver);
 
       start_key = kiter->first;
       CLS_LOG(20, "start_key=%s len=%zu", start_key.c_str(), start_key.size());
+
+      int ret = decode_list_index_key(kiter->first, &key, &ver);
+      if (ret < 0) {
+        CLS_LOG(0, "ERROR: failed to decode list index key (%s)\n", escape_str(kiter->first).c_str());
+        continue;
+      }
 
       if (!entry.is_valid()) {
         CLS_LOG(20, "entry %s[%s] is not valid\n", key.name.c_str(), key.instance.c_str());
@@ -573,6 +597,7 @@ int rgw_bucket_update_stats(cls_method_context_t hctx, bufferlist *in, bufferlis
       dest.total_size += s.second.total_size;
       dest.total_size_rounded += s.second.total_size_rounded;
       dest.num_entries += s.second.num_entries;
+      dest.actual_size += s.second.actual_size;
     }
   }
 
@@ -988,14 +1013,6 @@ static void update_olh_log(struct rgw_bucket_olh_entry& olh_data_entry, OLHLogOp
   log_entry.key = key;
   log_entry.delete_marker = delete_marker;
   log.push_back(log_entry);
-}
-
-static string escape_str(const string& s)
-{
-  int len = escape_json_attr_len(s.c_str(), s.size());
-  std::string escaped(len, 0);
-  escape_json_attr(s.c_str(), s.size(), escaped.data());
-  return escaped;
 }
 
 static int write_obj_instance_entry(cls_method_context_t hctx, struct rgw_bucket_dir_entry& instance_entry, const string& instance_idx)
@@ -1899,6 +1916,10 @@ int rgw_dir_suggest_changes(cls_method_context_t hctx,
     if (ret < 0 && ret != -ENOENT)
       return -EINVAL;
 
+    if (ret == -ENOENT) {
+      continue;
+    }
+
     if (cur_disk_bl.length()) {
       auto cur_disk_iter = cur_disk_bl.cbegin();
       try {
@@ -1953,18 +1974,6 @@ int rgw_dir_suggest_changes(cls_method_context_t hctx,
         }
         break;
       case CEPH_RGW_UPDATE:
-	if (!cur_disk.exists) {
-	  // this update would only have been sent by the rgw client
-	  // if the rgw_bucket_dir_entry existed, however between that
-	  // check and now the entry has diappeared, so we were likely
-	  // in the midst of a delete op, and we will not recreate the
-	  // entry
-	  CLS_LOG(10,
-		  "CEPH_RGW_UPDATE not applied because rgw_bucket_dir_entry"
-		  " no longer exists\n");
-	  break;
-	}
-
         CLS_LOG(10, "CEPH_RGW_UPDATE name=%s instance=%s total_entries: %" PRId64 " -> %" PRId64 "\n",
                 cur_change.key.name.c_str(), cur_change.key.instance.c_str(), stats.num_entries, stats.num_entries + 1);
 
@@ -2549,7 +2558,7 @@ static int rgw_bi_list_op(cls_method_context_t hctx, bufferlist *in, bufferlist 
   }
 
   op_ret.is_truncated = (count >= max) || more;
-  while (count >= max) {
+  while (count > max) {
     op_ret.entries.pop_back();
     count--;
   }
@@ -2937,7 +2946,7 @@ static int usage_iterate_range(cls_method_context_t hctx, uint64_t start, uint64
   string user_key;
   bool truncated_status = false;
 
-  assert(truncated != nullptr);
+  ceph_assert(truncated != nullptr);
 
   if (!by_user) {
     usage_record_prefix_by_time(end, end_key);
@@ -3309,7 +3318,7 @@ static int gc_iterate_entries(cls_method_context_t hctx, const string& marker, b
     get_time_key(now, &now_str);
     prepend_index_prefix(now_str, GC_OBJ_TIME_INDEX, &end_key);
 
-    CLS_LOG(0, "gc_iterate_entries end_key=%s\n", end_key.c_str());
+    CLS_LOG(10, "gc_iterate_entries end_key=%s\n", end_key.c_str());
   }
 
   string filter;
@@ -3331,8 +3340,11 @@ static int gc_iterate_entries(cls_method_context_t hctx, const string& marker, b
 
     CLS_LOG(10, "gc_iterate_entries key=%s\n", key.c_str());
 
-    if (!end_key.empty() && key.compare(end_key) >= 0)
+    if (!end_key.empty() && key.compare(end_key) >= 0) {
+      if (truncated)
+        *truncated = false;
       return 0;
+    }
 
     if (!key_in_index(key, GC_OBJ_TIME_INDEX))
       return 0;
@@ -3908,8 +3920,8 @@ CLS_INIT(rgw)
   cls_register_cxx_method(h_class, RGW_BI_LOG_TRIM, CLS_METHOD_RD | CLS_METHOD_WR, rgw_bi_log_trim, &h_rgw_bi_log_list_op);
   cls_register_cxx_method(h_class, RGW_DIR_SUGGEST_CHANGES, CLS_METHOD_RD | CLS_METHOD_WR, rgw_dir_suggest_changes, &h_rgw_dir_suggest_changes);
 
-  cls_register_cxx_method(h_class, "bi_log_resync", CLS_METHOD_RD | CLS_METHOD_WR, rgw_bi_log_resync, &h_rgw_bi_log_resync_op);
-  cls_register_cxx_method(h_class, "bi_log_stop", CLS_METHOD_RD | CLS_METHOD_WR, rgw_bi_log_stop, &h_rgw_bi_log_stop_op);
+  cls_register_cxx_method(h_class, RGW_BI_LOG_RESYNC, CLS_METHOD_RD | CLS_METHOD_WR, rgw_bi_log_resync, &h_rgw_bi_log_resync_op);
+  cls_register_cxx_method(h_class, RGW_BI_LOG_STOP, CLS_METHOD_RD | CLS_METHOD_WR, rgw_bi_log_stop, &h_rgw_bi_log_stop_op);
 
   /* usage logging */
   cls_register_cxx_method(h_class, RGW_USER_USAGE_LOG_ADD, CLS_METHOD_RD | CLS_METHOD_WR, rgw_user_usage_log_add, &h_rgw_user_usage_log_add);
@@ -3930,17 +3942,21 @@ CLS_INIT(rgw)
   cls_register_cxx_method(h_class, RGW_LC_PUT_HEAD, CLS_METHOD_RD| CLS_METHOD_WR, rgw_cls_lc_put_head, &h_rgw_lc_put_head);
   cls_register_cxx_method(h_class, RGW_LC_GET_HEAD, CLS_METHOD_RD, rgw_cls_lc_get_head, &h_rgw_lc_get_head);
   cls_register_cxx_method(h_class, RGW_LC_LIST_ENTRIES, CLS_METHOD_RD, rgw_cls_lc_list_entries, &h_rgw_lc_list_entries);
-  cls_register_cxx_method(h_class, "reshard_add", CLS_METHOD_RD | CLS_METHOD_WR, rgw_reshard_add, &h_rgw_reshard_add);
-  cls_register_cxx_method(h_class, "reshard_list", CLS_METHOD_RD, rgw_reshard_list, &h_rgw_reshard_list);
-  cls_register_cxx_method(h_class, "reshard_get", CLS_METHOD_RD,rgw_reshard_get, &h_rgw_reshard_get);
-  cls_register_cxx_method(h_class, "reshard_remove", CLS_METHOD_RD | CLS_METHOD_WR, rgw_reshard_remove, &h_rgw_reshard_remove);
-  cls_register_cxx_method(h_class, "set_bucket_resharding", CLS_METHOD_RD | CLS_METHOD_WR,
+
+  /* resharding */
+  cls_register_cxx_method(h_class, RGW_RESHARD_ADD, CLS_METHOD_RD | CLS_METHOD_WR, rgw_reshard_add, &h_rgw_reshard_add);
+  cls_register_cxx_method(h_class, RGW_RESHARD_LIST, CLS_METHOD_RD, rgw_reshard_list, &h_rgw_reshard_list);
+  cls_register_cxx_method(h_class, RGW_RESHARD_GET, CLS_METHOD_RD,rgw_reshard_get, &h_rgw_reshard_get);
+  cls_register_cxx_method(h_class, RGW_RESHARD_REMOVE, CLS_METHOD_RD | CLS_METHOD_WR, rgw_reshard_remove, &h_rgw_reshard_remove);
+
+  /* resharding attribute  */
+  cls_register_cxx_method(h_class, RGW_SET_BUCKET_RESHARDING, CLS_METHOD_RD | CLS_METHOD_WR,
 			  rgw_set_bucket_resharding, &h_rgw_set_bucket_resharding);
-  cls_register_cxx_method(h_class, "clear_bucket_resharding", CLS_METHOD_RD | CLS_METHOD_WR,
+  cls_register_cxx_method(h_class, RGW_CLEAR_BUCKET_RESHARDING, CLS_METHOD_RD | CLS_METHOD_WR,
 			  rgw_clear_bucket_resharding, &h_rgw_clear_bucket_resharding);
-  cls_register_cxx_method(h_class, "guard_bucket_resharding", CLS_METHOD_RD ,
+  cls_register_cxx_method(h_class, RGW_GUARD_BUCKET_RESHARDING, CLS_METHOD_RD ,
 			  rgw_guard_bucket_resharding, &h_rgw_guard_bucket_resharding);
-  cls_register_cxx_method(h_class, "get_bucket_resharding", CLS_METHOD_RD ,
+  cls_register_cxx_method(h_class, RGW_GET_BUCKET_RESHARDING, CLS_METHOD_RD ,
 			  rgw_get_bucket_resharding, &h_rgw_get_bucket_resharding);
 
   return;

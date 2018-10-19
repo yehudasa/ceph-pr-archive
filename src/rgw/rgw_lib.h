@@ -14,7 +14,7 @@
 #include "rgw_process.h"
 #include "rgw_rest_s3.h" // RGW_Auth_S3
 #include "rgw_ldap.h"
-#include "include/assert.h"
+#include "include/ceph_assert.h"
 
 class OpsLogSocket;
 
@@ -115,7 +115,7 @@ namespace rgw {
     friend class RGWRESTMgr_Lib;
   public:
 
-    int authorize() override;
+    int authorize(const DoutPrefixProvider *dpp) override;
 
     RGWHandler_Lib() {}
     ~RGWHandler_Lib() override {}
@@ -203,7 +203,7 @@ namespace rgw {
 
     inline RGWRados* get_store() { return store; }
 
-    virtual int execute() final { abort(); }
+    virtual int execute() final { ceph_abort(); }
     virtual int exec_start() = 0;
     virtual int exec_continue() = 0;
     virtual int exec_finish() = 0;

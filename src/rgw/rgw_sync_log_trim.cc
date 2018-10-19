@@ -28,7 +28,7 @@
 #include "rgw_sync.h"
 
 #include <boost/asio/yield.hpp>
-#include "include/assert.h"
+#include "include/ceph_assert.h"
 
 #define dout_subsys ceph_subsys_rgw
 
@@ -351,7 +351,7 @@ int take_min_status(CephContext *cct, Iter first, Iter last,
   status->clear();
   // The initialisation below is required to silence a false positive
   // -Wmaybe-uninitialized warning
-  boost::optional<size_t> num_shards = boost::make_optional(false, 0UL);
+  boost::optional<uint64_t> num_shards = boost::make_optional(false, uint64_t());
   for (auto peer = first; peer != last; ++peer) {
     const size_t peer_shards = peer->size();
     if (!num_shards) {
@@ -621,7 +621,7 @@ int AsyncMetadataList::_send_request()
     marker = mgr->get_marker(handle);
 
     if (!keys.empty()) {
-      assert(keys.size() == 1);
+      ceph_assert(keys.size() == 1);
       auto& key = keys.front();
       if (!callback(std::move(key), std::move(marker))) {
         return 0;
@@ -657,7 +657,7 @@ int AsyncMetadataList::_send_request()
     marker = mgr->get_marker(handle);
 
     if (!keys.empty()) {
-      assert(keys.size() == 1);
+      ceph_assert(keys.size() == 1);
       auto& key = keys.front();
       // stop at original marker
       if (marker >= start_marker) {
@@ -938,7 +938,7 @@ class RecentEventList {
   /// insert an event at the given point in time. this time must be at least as
   /// recent as the last inserted event
   void insert(T&& value, const time_point& now) {
-    // assert(events.empty() || now >= events.back().time)
+    // ceph_assert(events.empty() || now >= events.back().time)
     events.push_back(Event{std::move(value), now});
   }
 
@@ -976,17 +976,17 @@ namespace rgw {
 // read bucket trim configuration from ceph context
 void configure_bucket_trim(CephContext *cct, BucketTrimConfig& config)
 {
-  auto conf = cct->_conf;
+  const auto& conf = cct->_conf;
 
   config.trim_interval_sec =
-      conf->get_val<int64_t>("rgw_sync_log_trim_interval");
+      conf.get_val<int64_t>("rgw_sync_log_trim_interval");
   config.counter_size = 512;
   config.buckets_per_interval =
-      conf->get_val<int64_t>("rgw_sync_log_trim_max_buckets");
+      conf.get_val<int64_t>("rgw_sync_log_trim_max_buckets");
   config.min_cold_buckets_per_interval =
-      conf->get_val<int64_t>("rgw_sync_log_trim_min_cold_buckets");
+      conf.get_val<int64_t>("rgw_sync_log_trim_min_cold_buckets");
   config.concurrent_buckets =
-      conf->get_val<int64_t>("rgw_sync_log_trim_concurrent_buckets");
+      conf.get_val<int64_t>("rgw_sync_log_trim_concurrent_buckets");
   config.notify_timeout_ms = 10000;
   config.recent_size = 128;
   config.recent_duration = std::chrono::hours(2);

@@ -34,6 +34,8 @@
 #include "rgw_lib.h"
 #include "rgw_ldap.h"
 #include "rgw_token.h"
+#include "rgw_putobj_processor.h"
+#include "rgw_putobj_throttle.h"
 #include "rgw_compression.h"
 
 
@@ -41,7 +43,7 @@
  * ASSERT_H somehow not defined after all the above (which bring
  * in common/debug.h [e.g., dout])
  */
-#include "include/assert.h"
+#include "include/ceph_assert.h"
 
 
 #define RGW_RWXMODE  (S_IRWXU | S_IRWXG | S_IRWXO)
@@ -637,7 +639,7 @@ namespace rgw {
       DECODE_START(2, bl);
       uint32_t fh_type;
       decode(fh_type, bl);
-      assert(fh.fh_type == fh_type);
+      ceph_assert(fh.fh_type == fh_type);
       decode(state.dev, bl);
       decode(state.size, bl);
       decode(state.nlink, bl);
@@ -1266,7 +1268,7 @@ public:
     RGWObjectCtx* rados_ctx
       = static_cast<RGWObjectCtx*>(get_state()->obj_ctx);
     // framework promises to call op_init after parent init
-    assert(rados_ctx);
+    ceph_assert(rados_ctx);
     RGWOp::init(rados_ctx->store, get_state(), this);
     op = this; // assign self as op: REQUIRED
     return 0;
@@ -1402,7 +1404,7 @@ public:
     RGWObjectCtx* rados_ctx
       = static_cast<RGWObjectCtx*>(get_state()->obj_ctx);
     // framework promises to call op_init after parent init
-    assert(rados_ctx);
+    ceph_assert(rados_ctx);
     RGWOp::init(rados_ctx->store, get_state(), this);
     op = this; // assign self as op: REQUIRED
     return 0;
@@ -1436,7 +1438,7 @@ public:
   int operator()(const boost::string_ref name, const rgw_obj_key& marker,
 		uint8_t type) {
 
-    assert(name.length() > 0); // XXX
+    ceph_assert(name.length() > 0); // XXX
 
     /* hash offset of name in parent (short name) for NFS readdir cookie */
     uint64_t off = XXH64(name.data(), name.length(), fh_key::seed);
@@ -1574,7 +1576,7 @@ public:
     RGWObjectCtx* rados_ctx
       = static_cast<RGWObjectCtx*>(get_state()->obj_ctx);
     // framework promises to call op_init after parent init
-    assert(rados_ctx);
+    ceph_assert(rados_ctx);
     RGWOp::init(rados_ctx->store, get_state(), this);
     op = this; // assign self as op: REQUIRED
     return 0;
@@ -1659,7 +1661,7 @@ public:
     RGWObjectCtx* rados_ctx
       = static_cast<RGWObjectCtx*>(get_state()->obj_ctx);
     // framework promises to call op_init after parent init
-    assert(rados_ctx);
+    ceph_assert(rados_ctx);
     RGWOp::init(rados_ctx->store, get_state(), this);
     op = this; // assign self as op: REQUIRED
     return 0;
@@ -1723,7 +1725,7 @@ public:
     RGWObjectCtx* rados_ctx
       = static_cast<RGWObjectCtx*>(get_state()->obj_ctx);
     // framework promises to call op_init after parent init
-    assert(rados_ctx);
+    ceph_assert(rados_ctx);
     RGWOp::init(rados_ctx->store, get_state(), this);
     op = this; // assign self as op: REQUIRED
     return 0;
@@ -1781,7 +1783,7 @@ public:
     RGWObjectCtx* rados_ctx
       = static_cast<RGWObjectCtx*>(get_state()->obj_ctx);
     // framework promises to call op_init after parent init
-    assert(rados_ctx);
+    ceph_assert(rados_ctx);
     RGWOp::init(rados_ctx->store, get_state(), this);
     op = this; // assign self as op: REQUIRED
 
@@ -1879,7 +1881,7 @@ public:
     RGWObjectCtx* rados_ctx
       = static_cast<RGWObjectCtx*>(get_state()->obj_ctx);
     // framework promises to call op_init after parent init
-    assert(rados_ctx);
+    ceph_assert(rados_ctx);
     RGWOp::init(rados_ctx->store, get_state(), this);
     op = this; // assign self as op: REQUIRED
     return 0;
@@ -1965,7 +1967,7 @@ public:
     RGWObjectCtx* rados_ctx
       = static_cast<RGWObjectCtx*>(get_state()->obj_ctx);
     // framework promises to call op_init after parent init
-    assert(rados_ctx);
+    ceph_assert(rados_ctx);
     RGWOp::init(rados_ctx->store, get_state(), this);
     op = this; // assign self as op: REQUIRED
     return 0;
@@ -2047,7 +2049,7 @@ public:
     RGWObjectCtx* rados_ctx
       = static_cast<RGWObjectCtx*>(get_state()->obj_ctx);
     // framework promises to call op_init after parent init
-    assert(rados_ctx);
+    ceph_assert(rados_ctx);
     RGWOp::init(rados_ctx->store, get_state(), this);
     op = this; // assign self as op: REQUIRED
     return 0;
@@ -2128,7 +2130,7 @@ public:
     RGWObjectCtx* rados_ctx
       = static_cast<RGWObjectCtx*>(get_state()->obj_ctx);
     // framework promises to call op_init after parent init
-    assert(rados_ctx);
+    ceph_assert(rados_ctx);
     RGWOp::init(rados_ctx->store, get_state(), this);
     op = this; // assign self as op: REQUIRED
     return 0;
@@ -2198,7 +2200,7 @@ public:
     RGWObjectCtx* rados_ctx
       = static_cast<RGWObjectCtx*>(get_state()->obj_ctx);
     // framework promises to call op_init after parent init
-    assert(rados_ctx);
+    ceph_assert(rados_ctx);
     RGWOp::init(rados_ctx->store, get_state(), this);
     op = this; // assign self as op: REQUIRED
     return 0;
@@ -2265,6 +2267,9 @@ public:
 			     << " target = " << path << ""
 			     << dendl;
       matched = true;
+      /* match-dir case (trailing '/') */
+      if (name == prefix + "/")
+	exact_matched = true;
       is_dir = true;
       break;
     }
@@ -2286,8 +2291,9 @@ public:
   const std::string& bucket_name;
   const std::string& obj_name;
   RGWFileHandle* rgw_fh;
-  RGWPutObjProcessor* processor;
-  RGWPutObjDataProcessor* filter;
+  std::optional<rgw::putobj::AioThrottle> aio;
+  std::optional<rgw::putobj::AtomicObjectProcessor> processor;
+  rgw::putobj::DataProcessor* filter;
   boost::optional<RGWPutObj_Compress> compressor;
   CompressorRef plugin;
   buffer::list data;
@@ -2295,14 +2301,13 @@ public:
   MD5 hash;
   off_t real_ofs;
   size_t bytes_written;
-  bool multipart;
   bool eio;
 
   RGWWriteRequest(CephContext* _cct, RGWUserInfo *_user, RGWFileHandle* _fh,
 		  const std::string& _bname, const std::string& _oname)
     : RGWLibContinuedReq(_cct, _user), bucket_name(_bname), obj_name(_oname),
-      rgw_fh(_fh), processor(nullptr), filter(nullptr), real_ofs(0),
-      bytes_written(0), multipart(false), eio(false) {
+      rgw_fh(_fh), filter(nullptr), real_ofs(0),
+      bytes_written(0), eio(false) {
 
     int ret = header_init();
     if (ret == 0) {
@@ -2318,7 +2323,7 @@ public:
     RGWObjectCtx* rados_ctx
       = static_cast<RGWObjectCtx*>(get_state()->obj_ctx);
     // framework promises to call op_init after parent init
-    assert(rados_ctx);
+    ceph_assert(rados_ctx);
     RGWOp::init(rados_ctx->store, get_state(), this);
     op = this; // assign self as op: REQUIRED
     return 0;
@@ -2343,19 +2348,6 @@ public:
     s->bucket_tenant = user->user_id.tenant;
 
     return 0;
-  }
-
-  RGWPutObjProcessor *select_processor(RGWObjectCtx& obj_ctx,
-                                       bool *is_multipart) override {
-    struct req_state* s = get_state();
-    uint64_t part_size = s->cct->_conf->rgw_obj_stripe_size;
-    RGWPutObjProcessor_Atomic *processor =
-      new RGWPutObjProcessor_Atomic(obj_ctx, s->bucket_info, s->bucket,
-				    s->object.name, part_size, s->req_id,
-				    s->bucket_info.versioning_enabled());
-    processor->set_olh_epoch(olh_epoch);
-    processor->set_version_id(version_id);
-    return processor;
   }
 
   int get_params() override {
@@ -2426,7 +2418,7 @@ public:
     RGWObjectCtx* rados_ctx
       = static_cast<RGWObjectCtx*>(get_state()->obj_ctx);
     // framework promises to call op_init after parent init
-    assert(rados_ctx);
+    ceph_assert(rados_ctx);
     RGWOp::init(rados_ctx->store, get_state(), this);
     op = this; // assign self as op: REQUIRED
 
@@ -2509,7 +2501,7 @@ public:
     RGWObjectCtx* rados_ctx
       = static_cast<RGWObjectCtx*>(get_state()->obj_ctx);
     // framework promises to call op_init after parent init
-    assert(rados_ctx);
+    ceph_assert(rados_ctx);
     RGWOp::init(rados_ctx->store, get_state(), this);
     op = this; // assign self as op: REQUIRED
     return 0;
@@ -2562,7 +2554,7 @@ public:
     RGWObjectCtx* rados_ctx
       = static_cast<RGWObjectCtx*>(get_state()->obj_ctx);
     // framework promises to call op_init after parent init
-    assert(rados_ctx);
+    ceph_assert(rados_ctx);
     RGWOp::init(rados_ctx->store, get_state(), this);
     op = this; // assign self as op: REQUIRED
     return 0;
