@@ -45,6 +45,7 @@
 #include "rgw_tag_s3.h"
 #include "rgw_putobj_processor.h"
 #include "rgw_putobj_throttle.h"
+#include "rgw_crypt.h"
 #include "cls/lock/cls_lock_client.h"
 #include "cls/rgw/cls_rgw_client.h"
 
