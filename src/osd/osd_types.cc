@@ -1406,11 +1406,9 @@ bool pg_pool_t::maybe_updated_removed_snaps(const interval_set<snapid_t>& cached
   return true;
 }
 
-snapid_t pg_pool_t::snap_exists(const char *s) const
+snapid_t pg_pool_t::snap_exists(std::string_view s) const
 {
-  for (map<snapid_t,pool_snap_info_t>::const_iterator p = snaps.begin();
-       p != snaps.end();
-       ++p)
+  for (auto p = snaps.begin(); p != snaps.end(); ++p)
     if (p->second.name == s)
       return p->second.snapid;
   return 0;
