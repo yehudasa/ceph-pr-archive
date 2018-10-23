@@ -197,6 +197,11 @@ public:
   unsigned get_subsys() const override { return ceph_subsys_rgw; }
 };
 
+class RGWDefaultResponseOp : public RGWOp {
+public:
+  void send_response() override;
+};
+
 class RGWGetObj_Filter : public RGWGetDataCB
 {
 protected:
