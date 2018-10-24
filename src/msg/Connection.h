@@ -48,8 +48,7 @@ private:
 public:
   bool failed; // true if we are a lossy connection that has failed.
 
-  int rx_buffers_version;
-  map<ceph_tid_t,pair<bufferlist,int> > rx_buffers;
+  map<ceph_tid_t, bufferlist> rx_buffers;
 
   // authentication state
   // FIXME make these private after ms_handle_authorizer is removed
@@ -70,8 +69,7 @@ public:
       msgr(m),
       peer_type(-1),
       features(0),
-      failed(false),
-      rx_buffers_version(0) {
+      failed(false) {
   }
 
   ~Connection() override {
@@ -195,8 +193,7 @@ public:
 
   void post_rx_buffer(ceph_tid_t tid, bufferlist& bl) {
     Mutex::Locker l(lock);
-    ++rx_buffers_version;
-    rx_buffers[tid] = pair<bufferlist,int>(bl, rx_buffers_version);
+    rx_buffers[tid] = bl;
   }
 
   void revoke_rx_buffer(ceph_tid_t tid) {

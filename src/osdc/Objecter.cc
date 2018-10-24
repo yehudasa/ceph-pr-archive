@@ -3276,7 +3276,6 @@ void Objecter::_send_op(Op *op)
     op->con->revoke_rx_buffer(op->tid);
   }
   if (op->outbl &&
-      op->ontimeout == 0 &&  // only post rx_buffer if no timeout; see #9582
       op->outbl->length()) {
     ldout(cct, 20) << " posting rx buffer for " << op->tid << " on " << con
 		   << dendl;
@@ -3470,8 +3469,6 @@ void Objecter::handle_osd_op_reply(MOSDOpReply *m)
 
   // got data?
   if (op->outbl) {
-    if (op->con)
-      op->con->revoke_rx_buffer(op->tid);
     m->claim_data(*op->outbl);
     op->outbl = 0;
   }
