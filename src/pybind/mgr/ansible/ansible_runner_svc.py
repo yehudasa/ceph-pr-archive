@@ -164,23 +164,17 @@ class Client(object):
 
         response = None
 
-        try:
-            the_url = "%s/%s" % (self.server_url, LOGIN_URL)
-            r = requests.get(the_url,
-                             auth = self.auth,
-                             verify = self.certificate)
+        the_url = "%s/%s" % (self.server_url, LOGIN_URL)
+        response = requests.get(the_url,
+                                auth = self.auth,
+                                verify = self.certificate)
 
-            if r.status_code != requests.codes.ok:
-                self.log.error("login error <<%s>> (%s):%s",
-                                the_url, r.status_code, r.text)
-            else:
-                self.log.info("login succesful <<%s>> (%s):%s",
-                               the_url, r.status_code, r.text)
-
-            response = r
-
-        except Exception:
-            self.log.exception("Ansible runner service - Unexpected error")
+        if response.status_code != requests.codes.ok:
+            self.log.error("login error <<%s>> (%s):%s",
+                            the_url, response.status_code, response.text)
+        else:
+            self.log.info("login succesful <<%s>> (%s):%s",
+                            the_url, response.status_code, response.text)
 
         if response:
             self.token = json.loads(response.text)["data"]["token"]
@@ -229,8 +223,7 @@ class Client(object):
             response = r
 
         except Exception as ex:
-            self.log.error("Ansible runner service(GET %s) - \
-                            Unexpected error: %s", the_url, ex)
+            self.log.exception("Ansible runner service(GET %s)", the_url)
 
         return response
 
@@ -262,7 +255,7 @@ class Client(object):
             response = r
 
         except Exception as ex:
-            self.log.error("Ansible runner service(POST) - Unexpected error: %s", ex)
+            self.log.exception("Ansible runner service(POST %s)", the_url)
 
         return response
 

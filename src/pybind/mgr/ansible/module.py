@@ -241,21 +241,20 @@ class Module(MgrModule, orchestrator.Orchestrator):
         self.verify_config()
 
         # Ansible runner service client
-        self.ar_client = Client(server = self.get_config('server_addr', ''),
-                                port = self.get_config('server_port', ''),
-                                user = self.get_config('username', ''),
-                                password = self.get_config('password', ''),
-                                certificate = self.get_config('certificate', ''),
-                                logger = self.log)
-
-        if not self.ar_client.is_operative():
-            self.log.error("Ansible Runner Service not available. "
+        try:
+            self.ar_client = Client(server = self.get_config('server_addr', ''),
+                                    port = self.get_config('server_port', ''),
+                                    user = self.get_config('username', ''),
+                                    password = self.get_config('password', ''),
+                                    certificate = self.get_config('certificate', ''),
+                                    logger = self.log)
+        except Exception:
+            self.log.exception("Ansible Runner Service not available. "
                           "Check external server status or connection options. "
                           "If configuration options changed try to "
                           "disable/enable the module.")
             self.shutdown()
             return
-
 
         self.run = True
 
