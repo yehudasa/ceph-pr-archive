@@ -1890,16 +1890,6 @@ public:
 
   // -- lingering ops --
 
-  struct WatchContext {
-    // this simply mirrors librados WatchCtx2
-    virtual void handle_notify(uint64_t notify_id,
-			       uint64_t cookie,
-			       uint64_t notifier_id,
-			       bufferlist& bl) = 0;
-    virtual void handle_error(uint64_t cookie, int err) = 0;
-    virtual ~WatchContext() {}
-  };
-
   struct LingerOp : public RefCountedObject {
     uint64_t linger_id{0};
     op_target_t target{object_t(), object_locator_t(), 0};
@@ -1909,7 +1899,6 @@ public:
 
     vector<OSDOp> ops;
     bufferlist inbl;
-    bufferlist *poutbl{nullptr};
     version_t *pobjver{nullptr};
 
     bool is_watch{false};
@@ -1924,14 +1913,17 @@ public:
     uint32_t register_gen{0};
     bool registered{false};
     bool canceled{false};
-    Context *on_reg_commit{nullptr};
+    cf::unique_function<void(boost::system::error_code,
+			     bufferlist&&) &&> on_reg_commit;
 
-    Context *on_notify_finish{nullptr};
-    bufferlist *notify_result_bl{nullptr};
+    cf::unique_function<void(boost::system::error_code, bufferlist&&) &&> on_notify_finish;
     uint64_t notify_id{0};
 
-    WatchContext *watch_context{nullptr};
-
+    cf::unique_function<void(boost::system::error_code,
+			     uint64_t notify_id,
+			     uint64_t cookie,
+			     uint64_t notifier_id,
+			     bufferlist&& bl) > handle;
     OSDSession *session{nullptr};
 
     Objecter *objecter;
@@ -1958,11 +1950,6 @@ public:
 
     uint64_t get_cookie() {
       return reinterpret_cast<uint64_t>(this);
-    }
-
-  private:
-    ~LingerOp() override {
-      delete watch_context;
     }
   };
 
@@ -2207,7 +2194,6 @@ private:
     return op_budget;
   }
   int take_linger_budget(LingerOp *info);
-  friend class WatchContext; // to invoke put_up_budget_bytes
   void put_op_budget_bytes(int op_budget) {
     ceph_assert(op_budget >= 0);
     op_throttle_bytes.put(op_budget);
@@ -2697,14 +2683,42 @@ public:
 			  ObjectOperation& op,
 			  const SnapContext& snapc, ceph::real_time mtime,
 			  bufferlist& inbl,
-			  Context *onfinish,
+			  cf::unique_function<void(
+			    boost::system::error_code,
+			    buffer::list&&) &&> onfinish,
 			  version_t *objver);
+  ceph_tid_t linger_watch(LingerOp *info,
+			  ObjectOperation& op,
+			  const SnapContext& snapc, ceph::real_time mtime,
+			  bufferlist& inbl,
+			  Context* onfinish,
+			  version_t *objver) {
+    return linger_watch(info, op, snapc, mtime, inbl,
+			[c = std::unique_ptr<Context>(onfinish)]
+			(boost::system::error_code ec, buffer::list&&) mutable {
+			  c.release()->complete(ceph::from_error_code(ec));
+			}, objver);
+  }
+  ceph_tid_t linger_notify(LingerOp *info,
+			   ObjectOperation& op,
+			   snapid_t snap, bufferlist& inbl,
+			   cf::unique_function<void(
+			     boost::system::error_code,
+			     bufferlist&& bl) &&> onack,
+			   version_t *objver);
   ceph_tid_t linger_notify(LingerOp *info,
 			   ObjectOperation& op,
 			   snapid_t snap, bufferlist& inbl,
 			   bufferlist *poutbl,
-			   Context *onack,
-			   version_t *objver);
+			   Context* onack,
+			   version_t *objver) {
+    return linger_notify(info, op, snap, inbl,
+			 [c = std::unique_ptr<Context>(onack),
+			  pbl = poutbl](boost::system::error_code ec,
+					bufferlist&& bl) {
+			   *pbl = std::move(bl);
+			 }, objver);
+  }
   int linger_check(LingerOp *info);
   void linger_cancel(LingerOp *info);  // releases a reference
   void _linger_cancel(LingerOp *info);

@@ -30,31 +30,25 @@
 namespace librados {
 namespace {
 
-struct C_notify_Finish : public Context {
+struct CB_notify_Finish {
   CephContext *cct;
   Context *ctx;
   Objecter *objecter;
   Objecter::LingerOp *linger_op;
-  bufferlist reply_bl;
   bufferlist *preply_bl;
   char **preply_buf;
   size_t *preply_buf_len;
 
-  C_notify_Finish(CephContext *_cct, Context *_ctx, Objecter *_objecter,
-                  Objecter::LingerOp *_linger_op, bufferlist *_preply_bl,
-                  char **_preply_buf, size_t *_preply_buf_len)
+  CB_notify_Finish(CephContext *_cct, Context *_ctx, Objecter *_objecter,
+		   Objecter::LingerOp *_linger_op, bufferlist *_preply_bl,
+		   char **_preply_buf, size_t *_preply_buf_len)
     : cct(_cct), ctx(_ctx), objecter(_objecter), linger_op(_linger_op),
       preply_bl(_preply_bl), preply_buf(_preply_buf),
-      preply_buf_len(_preply_buf_len)
-  {
-    linger_op->on_notify_finish = this;
-    linger_op->notify_result_bl = &reply_bl;
-  }
+      preply_buf_len(_preply_buf_len) {}
 
-  void finish(int r) override
-  {
+  void operator()(boost::system::error_code ec, bufferlist&& reply_bl) {
     ldout(cct, 10) << __func__ << " completed notify (linger op "
-                   << linger_op << "), r = " << r << dendl;
+		   << linger_op << "), ec = " << ec << dendl;
 
     // pass result back to user
     // NOTE: we do this regardless of what error code we return
@@ -71,7 +65,7 @@ struct C_notify_Finish : public Context {
     if (preply_bl)
       preply_bl->claim(reply_bl);
 
-    ctx->complete(r);
+    ctx->complete(ceph::from_error_code(ec));
   }
 };
 
@@ -159,22 +153,19 @@ struct C_aio_notify_Complete : public C_aio_linger_Complete {
   }
 };
 
-struct C_aio_notify_Ack : public Context {
+struct CB_aio_notify_Ack {
   CephContext *cct;
-  C_notify_Finish *onfinish;
   C_aio_notify_Complete *oncomplete;
 
-  C_aio_notify_Ack(CephContext *_cct, C_notify_Finish *_onfinish,
-                   C_aio_notify_Complete *_oncomplete)
-    : cct(_cct), onfinish(_onfinish), oncomplete(_oncomplete)
-  {
-  }
+  CB_aio_notify_Ack(CephContext *_cct,
+		    C_aio_notify_Complete *_oncomplete)
+    : cct(_cct), oncomplete(_oncomplete) {}
 
-  void finish(int r) override
+  void operator()(boost::system::error_code ec, bufferlist&&)
   {
     ldout(cct, 10) << __func__ << " linger op " << oncomplete->linger_op << " "
-                   << "acked (" << r << ")" << dendl;
-    oncomplete->handle_ack(r);
+                   << "acked (" << ec << ")" << dendl;
+    oncomplete->handle_ack(ceph::from_error_code(ec));
   }
 };
 
@@ -1594,7 +1585,7 @@ void librados::IoCtxImpl::set_sync_op_version(version_t ver)
   last_objver = ver;
 }
 
-struct WatchInfo : public Objecter::WatchContext {
+struct WatchInfo {
   librados::IoCtxImpl *ioctx;
   object_t oid;
   librados::WatchCtx *ctx;
@@ -1607,7 +1598,7 @@ struct WatchInfo : public Objecter::WatchContext {
     : ioctx(io), oid(o), ctx(c), ctx2(c2), internal(inter) {
     ioctx->get();
   }
-  ~WatchInfo() override {
+  ~WatchInfo() {
     ioctx->put();
     if (internal) {
       delete ctx;
@@ -1615,10 +1606,20 @@ struct WatchInfo : public Objecter::WatchContext {
     }
   }
 
+  void operator()(boost::system::error_code ec,
+		  uint64_t notify_id,
+		  uint64_t cookie,
+		  uint64_t notifier_id,
+		  bufferlist&& bl) noexcept {
+    if (!ec)
+      handle_notify(notify_id, cookie, notifier_id, bl);
+    else
+      handle_error(cookie, ceph::from_error_code(ec));
+  }
   void handle_notify(uint64_t notify_id,
 		     uint64_t cookie,
 		     uint64_t notifier_id,
-		     bufferlist& bl) override {
+		     bufferlist& bl) {
     ldout(ioctx->client->cct, 10) << __func__ << " " << notify_id
 				  << " cookie " << cookie
 				  << " notifier_id " << notifier_id
@@ -1635,7 +1636,7 @@ struct WatchInfo : public Objecter::WatchContext {
       ioctx->notify_ack(oid, notify_id, cookie, empty);
     }
   }
-  void handle_error(uint64_t cookie, int err) override {
+  void handle_error(uint64_t cookie, int err) {
     ldout(ioctx->client->cct, 10) << __func__ << " cookie " << cookie
 				  << " err " << err
 				  << dendl;
@@ -1664,9 +1665,7 @@ int librados::IoCtxImpl::watch(const object_t& oid, uint64_t *handle,
 
   Objecter::LingerOp *linger_op = objecter->linger_register(oid, oloc, 0);
   *handle = linger_op->get_cookie();
-  linger_op->watch_context = new WatchInfo(this,
-					   oid, ctx, ctx2, internal);
-
+  linger_op->handle = WatchInfo(this, oid, ctx, ctx2, internal);
   prepare_assert_ops(&wr);
   wr.watch(*handle, CEPH_OSD_WATCH_OP_WATCH, timeout);
   bufferlist bl;
@@ -1710,7 +1709,7 @@ int librados::IoCtxImpl::aio_watch(const object_t& oid,
 
   ::ObjectOperation wr;
   *handle = linger_op->get_cookie();
-  linger_op->watch_context = new WatchInfo(this, oid, ctx, ctx2, internal);
+  linger_op->handle = WatchInfo(this, oid, ctx, ctx2, internal);
 
   prepare_assert_ops(&wr);
   wr.watch(*handle, CEPH_OSD_WATCH_OP_WATCH, timeout);
@@ -1784,11 +1783,9 @@ int librados::IoCtxImpl::notify(const object_t& oid, bufferlist& bl,
   Objecter::LingerOp *linger_op = objecter->linger_register(oid, oloc, 0);
 
   C_SaferCond notify_finish_cond;
-  Context *notify_finish = new C_notify_Finish(client->cct, &notify_finish_cond,
-                                               objecter, linger_op, preply_bl,
-                                               preply_buf, preply_buf_len);
-  (void) notify_finish;
-
+  linger_op->on_notify_finish.emplace_assign<CB_notify_Finish>(
+    client->cct, &notify_finish_cond, objecter, linger_op, preply_bl,
+    preply_buf, preply_buf_len);
   uint32_t timeout = notify_timeout;
   if (timeout_ms)
     timeout = timeout_ms / 1000;
@@ -1838,12 +1835,9 @@ int librados::IoCtxImpl::aio_notify(const object_t& oid, AioCompletionImpl *c,
   c->io = this;
 
   C_aio_notify_Complete *oncomplete = new C_aio_notify_Complete(c, linger_op);
-  C_notify_Finish *onnotify = new C_notify_Finish(client->cct, oncomplete,
-                                                  objecter, linger_op,
-                                                  preply_bl, preply_buf,
-                                                  preply_buf_len);
-  Context *onack = new C_aio_notify_Ack(client->cct, onnotify, oncomplete);
-
+  linger_op->on_notify_finish.emplace_assign<CB_notify_Finish>(
+    client->cct, oncomplete, objecter, linger_op, preply_bl, preply_buf,
+    preply_buf_len);
   uint32_t timeout = notify_timeout;
   if (timeout_ms)
     timeout = timeout_ms / 1000;
@@ -1856,8 +1850,9 @@ int librados::IoCtxImpl::aio_notify(const object_t& oid, AioCompletionImpl *c,
 
   // Issue RADOS op
   objecter->linger_notify(linger_op,
-			  rd, snap_seq, inbl, NULL,
-			  onack, &c->objver);
+			  rd, snap_seq, inbl,
+			  CB_aio_notify_Ack(client->cct, oncomplete),
+			  &c->objver);
   return 0;
 }
 
