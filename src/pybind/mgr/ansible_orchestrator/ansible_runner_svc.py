@@ -114,11 +114,11 @@ class PlayBookExecution(object):
             result_events = {}
         else:
             events = json.loads(response.text)["data"]["events"]
-            result_events = {event:data for event,data in events.iteritems()
+            result_events = {event:data for event,data in events.items()
                             if "task" in data and
                             re.match(self.result_task_pattern, data["task"])}
             if event_filter:
-                result_events = {event:data for event,data in result_events.iteritems()
+                result_events = {event:data for event,data in result_events.items()
                                 if re.match(event_filter, data['event'])}
 
         self.log.info("Requested playbook result is: %s", json.dumps(result_events))
@@ -179,8 +179,8 @@ class Client(object):
 
             response = r
 
-        except Exception as ex:
-            self.log.error("Ansible runner service - Unexpected error: %s", ex)
+        except Exception:
+            self.log.exception("Ansible runner service - Unexpected error")
 
         if response:
             self.token = json.loads(response.text)["data"]["token"]
@@ -275,4 +275,4 @@ class Client(object):
         @returns: A requests object
         """
         # TODO
-        pass
+        raise NotImplementedError("TODO")

@@ -25,7 +25,12 @@ WAIT_PERIOD = 10
 
 
 # List of playbooks names used
-GET_INVENTORY_PLAYBOOK = "probe-disks.yml"
+
+# Name of the playbook used in the "get_inventory" method.
+# This playbook is expected to provide a list of storage devices in the host
+# where the playbook is executed.
+GET_INVENTORY_PLAYBOOK = "host-disks.yml"
+
 
 class AnsibleReadOperation(orchestrator.ReadCompletion):
     """ A read operation means to obtain information from the cluster.
@@ -273,7 +278,7 @@ class Module(MgrModule, orchestrator.Orchestrator):
                                                  params = "{}")
 
         # Assing the process_output function
-        ansible_operation.process_output = process_inventary_json
+        ansible_operation.process_output = process_inventory_json
         ansible_operation.event_filter = "runner_on_ok"
 
         # Execute the playbook to obtain data
@@ -312,7 +317,7 @@ class Module(MgrModule, orchestrator.Orchestrator):
 # Auxiliary functions
 #==============================================================================
 
-def process_inventary_json(inventory_events, ar_client, playbook_uuid):
+def process_inventory_json(inventory_events, ar_client, playbook_uuid):
     """ Adapt the output of the playbook used in 'get_inventory'
         to the Orchestrator expected output (list of InventoryNode)
 
@@ -336,7 +341,7 @@ def process_inventary_json(inventory_events, ar_client, playbook_uuid):
     inventory_nodes = []
 
     # Loop over the result events and request the event data
-    for event_key, data in inventory_events.iteritems():
+    for event_key, data in inventory_events.items():
         event_response = ar_client.http_get(EVENT_DATA_URL % (playbook_uuid,
                                                               event_key))
 
@@ -344,12 +349,12 @@ def process_inventary_json(inventory_events, ar_client, playbook_uuid):
         if event_response:
             event_data = json.loads(event_response.text)["data"]["event_data"]
 
-            free_disks = event_data["res"]["free_disks"]
-            for item, data in free_disks.iteritems():
+            free_disks = event_data["res"]["disks_catalog"]
+            for item, data in free_disks.items():
                 if item not in [host.name for host in inventory_nodes]:
 
                     devs = []
-                    for dev_key, dev_data in data.iteritems():
+                    for dev_key, dev_data in data.items():
                         if dev_key not in [device.id for device in devs]:
                             dev = orchestrator.InventoryDevice()
                             dev.id = dev_key
