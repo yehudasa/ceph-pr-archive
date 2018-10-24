@@ -218,6 +218,7 @@ class DeepSeaOrchestrator(MgrModule, orchestrator.Orchestrator):
                     event = {}
             self._set_last_failure_msg("SSE read terminated")
         except Exception as ex:
+            self.log.exception(ex)
             self._set_last_failure_msg("SSE read failed: {}".format(str(ex)))
 
         self._reading_events = False
