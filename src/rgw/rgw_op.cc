@@ -741,6 +741,12 @@ rgw::IAM::Environment rgw_build_iam_environment(RGWRados* store,
     // identifier that can persist through name changes?
     e.emplace("aws:username", s->user->user_id.id);
   }
+
+  i = m.find("HTTP_X_AMZ_SECURITY_TOKEN");
+  if (i != m.end()) {
+    e.emplace("sts:authentication", "true");
+  }
+
   return e;
 }
 
