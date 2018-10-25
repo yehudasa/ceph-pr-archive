@@ -567,9 +567,12 @@ int rgw_build_bucket_policies(RGWRados* store, struct req_state* s)
 
   if (! s->user->user_id.empty()) {
     try {
+      ldpp_dout(s, 0) << "Retrieved user: " << s->user->user_id << dendl;
       map<string, bufferlist> uattrs;
       if (ret = rgw_get_user_attrs_by_uid(store, s->user->user_id, uattrs); ! ret) {
+        ldpp_dout(s, 0) << "Retrieved user attrs" << dendl;
         s->iam_user_policies = get_iam_user_policy_from_attr(s->cct, store, uattrs, s->user->user_id.tenant);
+        ldpp_dout(s, 0) << "Retrieved user policy" << dendl;
       } else {
         if (ret == -ENOENT)
           ret = 0;
@@ -2557,6 +2560,7 @@ int RGWCreateBucket::verify_permission()
   if (!verify_user_permission(this, s, arn, rgw::IAM::s3CreateBucket)) {
     return -EACCES;
   }
+  ldpp_dout(this, 10) << "Bucket ARN is: " << arn.to_string() << dendl;
 
   if (s->user->user_id.tenant != s->bucket_tenant) {
     ldpp_dout(this, 10) << "user cannot create a bucket in a different tenant"

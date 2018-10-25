@@ -1083,6 +1083,7 @@ bool verify_user_permission(const DoutPrefixProvider* dpp,
                             const uint64_t op)
 {
   auto usr_policy_res = eval_user_policies(user_policies, s->env, boost::none, op, res);
+  ldpp_dout(s, 0) << "User Policy result is: " << static_cast<int>(usr_policy_res) << dendl;
   if (usr_policy_res == Effect::Deny) {
     return false;
   }
