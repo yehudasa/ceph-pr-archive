@@ -18,7 +18,7 @@ struct OSDPerfMetricReport {
 
   DENC(OSDPerfMetricReport, v, p) {
       DENC_START(1, 1, p);
-  //    denc(v.performance_counter_descriptors, p);
+//      denc(v.performance_counter_descriptors, p);
       DENC_FINISH(p);
   }
 };
