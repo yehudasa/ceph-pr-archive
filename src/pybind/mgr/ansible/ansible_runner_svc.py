@@ -129,16 +129,17 @@ class Client(object):
     and execute easily playbooks
     """
 
-    def __init__(self, server, port, user, password, certificate, logger):
-        """Get the Ansible runner service url and user credentials to be used in
-        all the requests.
+    def __init__(self, server_url, user, password, certificate, logger):
+        """Provide an https client to make easy interact with the Ansible
+        Runner Service"
 
-        @param ar_service_url: The URL of the Ansible runner service
-        @param user: A tuple with (user_name, password), the user authorized to
-                    connect with the Ansible Runner service
+        @param servers_url: The base URL >server>:<port> of the Ansible Runner Service
+        @param user: User name of the authorized user
+        @param password: Password of the authotized user
+        @param certificate: Certificate file of the Ansible Runner Service
+        @param logger: Log file
         """
-        self.server = server
-        self.port = port
+        self.server_url = server_url
         self.user = user
         self.password = password
         self.log = logger
@@ -153,7 +154,7 @@ class Client(object):
         # Once authenticated this token will be used in all the requests
         self.token = ""
 
-        self.server_url = "https://{0}:{1}".format(self.server, self.port)
+        self.server_url = "https://{0}".format(self.server_url)
 
         # Log in the server and get a token
         self.login()
@@ -222,7 +223,7 @@ class Client(object):
 
             response = r
 
-        except Exception as ex:
+        except Exception:
             self.log.exception("Ansible runner service(GET %s)", the_url)
 
         return response
@@ -254,7 +255,7 @@ class Client(object):
                               the_url, r.status_code, r.text)
             response = r
 
-        except Exception as ex:
+        except Exception:
             self.log.exception("Ansible runner service(POST %s)", the_url)
 
         return response

@@ -188,8 +188,7 @@ class Module(MgrModule, orchestrator.Orchestrator):
     """
 
     OPTIONS = [
-        {'name': 'server_addr'},
-        {'name': 'server_port'},
+        {'name': 'server_url'},
         {'name': 'username'},
         {'name': 'password'},
         {'name': 'certificate'}  # Ansible runner https server certificate file
@@ -242,8 +241,7 @@ class Module(MgrModule, orchestrator.Orchestrator):
 
         # Ansible runner service client
         try:
-            self.ar_client = Client(server = self.get_config('server_addr', ''),
-                                    port = self.get_config('server_port', ''),
+            self.ar_client = Client(server_url = self.get_config('server_url', ''),
                                     user = self.get_config('username', ''),
                                     password = self.get_config('password', ''),
                                     certificate = self.get_config('certificate', ''),
@@ -289,16 +287,10 @@ class Module(MgrModule, orchestrator.Orchestrator):
 
     def verify_config(self):
 
-        if not self.get_config('server_addr', ''):
+        if not self.get_config('server_url', ''):
             self.log.error(
-                "No Ansible Runner Service address. "
-                "Try 'ceph config set mgr mgr/%s/server_addr <server name/ip>'",
-                self.module_name)
-
-        if not self.get_config('server_port', ''):
-            self.log.error(
-                "No Ansible Runner Service port. "
-                "Try 'ceph config set mgr mgr/%s/server_port <port number>'",
+                "No Ansible Runner Service base URL <server_name>:<port>"
+                "Try 'ceph config set mgr mgr/%s/server_url <server name/ip>:<port>'",
                 self.module_name)
 
         if not self.get_config('username', ''):
