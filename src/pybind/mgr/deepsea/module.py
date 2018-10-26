@@ -46,16 +46,8 @@ class DeepSeaReadCompletion(orchestrator.ReadCompletion):
 class DeepSeaOrchestrator(MgrModule, orchestrator.Orchestrator):
     OPTIONS = [
         {
-            'name': 'salt_api_host',
+            'name': 'salt_api_url',
             'default': None
-        },
-        {
-            'name': 'salt_api_port',
-            'default': '8000'
-        },
-        {
-            'name': 'salt_api_ssl',
-            'default': 'false'
         },
         {
             'name': 'salt_api_eauth',
@@ -370,10 +362,7 @@ class DeepSeaOrchestrator(MgrModule, orchestrator.Orchestrator):
         """
         returns the response, which the caller then has to read
         """
-        protocol = 'https' if self.get_config('salt_api_ssl').lower() != 'false' else 'http'
-        url = "{0}://{1}:{2}/{3}".format(protocol,
-                                         self.get_config('salt_api_host'),
-                                         self.get_config('salt_api_port'), path)
+        url = "{0}/{1}".format(self.get_config('salt_api_url'), path)
         try:
             if method.lower() == 'get':
                 resp = requests.get(url, headers = { "X-Auth-Token": self.token },
