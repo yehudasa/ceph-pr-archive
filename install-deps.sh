@@ -245,6 +245,8 @@ else
                 ;;
             *Bionic*)
                 ensure_decent_gcc_on_ubuntu 7 bionic
+                $SUDO add-apt-repository "deb http://security.ubuntu.com/ubuntu xenial-security main"
+                $SUDO apt-get update
                 install_pkg_on_ubuntu \
 		    ceph-libboost1.67 \
 		    dd38c27740c1f9a9e6719a07eef84a1369dc168b \
