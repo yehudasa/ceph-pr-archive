@@ -1825,8 +1825,20 @@ static http_op op_from_method(const char *method)
 
 int RGWHandler_REST::init_permissions(RGWOp* op)
 {
-  if (op->get_type() == RGW_OP_CREATE_BUCKET)
+  if (op->get_type() == RGW_OP_CREATE_BUCKET) {
+    if (! s->user->user_id.empty()) {
+      try {
+        map<string, bufferlist> uattrs;
+        if (auto ret = rgw_get_user_attrs_by_uid(store, s->user->user_id, uattrs); ! ret) {
+          s->iam_user_policies = get_iam_user_policy_from_attr(s->cct, store, uattrs, s->user->user_id.tenant);
+        }
+      } catch (const std::exception& e) {
+        lderr(s->cct) << "Error reading IAM User Policy: " << e.what() << dendl;
+      }
+    }
+    s->env = rgw_build_iam_environment(store, s);
     return 0;
+  }
 
   return do_init_permissions();
 }
