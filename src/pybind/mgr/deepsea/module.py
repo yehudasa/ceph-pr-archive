@@ -3,11 +3,16 @@
 ceph-mgr DeepSea orchestrator module
 """
 
+# We want orchestrator methods in this to be 1:1 mappings to DeepSea runners,
+# we don' want to aggregate mutliple salt invocations here, because that means
+# this module would need to know too much about how DeepSea works internally.
+#Better to expose new runners from DeepSea to match what the orchestrator needs.
+
 import json
 import errno
 import requests
 
-from threading import Event, Thread
+from threading import Event, Thread, Lock
 
 from mgr_module import MgrModule
 import orchestrator
@@ -17,6 +22,25 @@ class RequestException(Exception):
     def __init__(self, message, status_code=None):
         super(RequestException, self).__init__(message)
         self.status_code = status_code
+
+
+class DeepSeaReadCompletion(orchestrator.ReadCompletion):
+    def __init__(self, process_result_callback):
+        super(DeepSeaReadCompletion, self).__init__()
+        self._complete = False
+        self._cb = process_result_callback
+
+    def _process_result(self, data):
+        self._result = self._cb(data)
+        self._complete = True
+
+    @property
+    def result(self):
+        return self._result
+
+    @property
+    def is_complete(self):
+        return self._complete
 
 
 class DeepSeaOrchestrator(MgrModule, orchestrator.Orchestrator):
@@ -90,6 +114,8 @@ class DeepSeaOrchestrator(MgrModule, orchestrator.Orchestrator):
         self._event_reader = None
         self._reading_events = False
         self._last_failure_msg = None
+        self._all_completions = dict()
+        self._completion_lock = Lock()
 
 
     def available(self):
@@ -100,6 +126,104 @@ class DeepSeaOrchestrator(MgrModule, orchestrator.Orchestrator):
             return False, self._last_failure_msg
 
         return True, ""
+
+
+    def get_inventory(self, node_filter=None):
+        # Returns an approximation of inventory, so far just hostnames, not disks
+        # (We don't yet have a DeepSea runner which will conveniently return
+        # all that stuff at once, so faking it up with 'select.minions')
+        # TODO: implement node filter (check `ceph orchestrator device ls <node>`)
+
+        def process_result(raw_event):
+            result = []
+            raw_event = json.loads(raw_event)
+            if raw_event['data']['success']:
+                for hostname in raw_event["data"]["return"]:
+                    # Pretending there's no disks for now (because the 'select.minions'
+                    # runner does't expose that
+                    result.append(orchestrator.InventoryNode(hostname, []))
+            return result
+
+        with self._completion_lock:
+            c = DeepSeaReadCompletion(process_result)
+
+            resp = self._do_request_with_login("POST", data = {
+                "client": "runner_async",
+                "fun": "select.minions",
+                "cluster": "ceph"
+                # could add "role:" here to get individual roles
+                # if node_filter was requested (DeepSea role should map to
+                # Orchestrator label concept)
+            })
+
+            # ['return'][0]['tag'] in the resonse JSON is what we need to match
+            # on when looking for the result event (e.g.: "salt/run/20181018074024331230")
+            self._all_completions["{}/ret".format(resp.json()['return'][0]['tag'])] = c
+
+            return c
+
+        # TODO: It's possilbe _do_request_with_login could throw an exception
+        # (e.g. salt-api down).  How to handle this?
+
+
+    def describe_service(self, service_type, service_id):
+        # Trivial implmenetation ignoring service_id (to test, try
+        # `ceph orchestrator service status mon ''`).  Also, it will lie horribly
+        # about OSDs.  This method is also faked up with 'select.minions' because
+        # again we don't have a runner that quite matches on the DeepSea side yet.
+
+        assert service_type in ("mon", "mgr", "osd", "mds", "rgw"), service_type + " unsupported"
+
+        def process_result(raw_event):
+            result = orchestrator.ServiceDescription()
+            raw_event = json.loads(raw_event)
+            if raw_event['data']['success']:
+                for hostname in raw_event["data"]["return"]:
+                    loc = orchestrator.ServiceLocation()
+                    loc.nodename = hostname
+                    # this next is probably correct for mon, mgr, mds, maybe rgw,
+                    # but will be very wrong for OSDs.
+                    loc.daemon_name = hostname.split('.')[0]
+                    result.locations.append(loc)
+            return result
+
+        with self._completion_lock:
+            c = DeepSeaReadCompletion(process_result)
+
+            role = "storage" if service_type == "osd" else service_type
+
+            resp = self._do_request_with_login("POST", data = {
+                "client": "runner_async",
+                "fun": "select.minions",
+                "cluster": "ceph",
+                "roles": role
+            })
+            self._all_completions["{}/ret".format(resp.json()['return'][0]['tag'])] = c
+
+            return c
+
+        # TODO: It's possilbe _do_request_with_login could throw an exception
+        # (e.g. salt-api down).  How to handle this?
+
+
+    def wait(self, completions):
+        incomplete = False
+
+        with self._completion_lock:
+            for c in completions:
+                if c.is_complete:
+                    continue
+                if not c.is_complete:
+                    # TODO: the job is in the bus, it should reach us eventually
+                    # unless something has gone wrong (mgr failed over, salt-api
+                    # died, etc.), in which case it's possible the job finished
+                    # but we never noticed the salt/run/$id/ret event.  Should
+                    # probably add the job ID (and start timestamp?) to the
+                    # completion object so we can query the active jobs to see if
+                    # incomplete jobs are still running or not.
+                    incomplete = True
+
+        return not incomplete
 
 
     def handle_command(self, inbuf, cmd):
@@ -185,37 +309,44 @@ class DeepSeaOrchestrator(MgrModule, orchestrator.Orchestrator):
     # TODO: How are we going to deal with salt-api dying, or mgr failing over,
     #       or other unforeseen glitches when we're waiting for particular jobs
     #       to complete?  What's to stop things falling through the cracks?
+    #       Do completions we're waiting on need to be persisted somewhere?
     def _read_sse(self):
         event = {}
         try:
             for line in self._event_response.iter_lines():
-                if line:
-                    line = line.decode('utf-8')
-                    colon = line.find(':')
-                    if colon > 0:
-                        k = line[:colon]
-                        v = line[colon+2:]
-                        if k == "retry":
-                            # TODO: find out if we need to obey this reconnection time
-                            self.log.warn("Server requested retry {}, ignored".format(v))
-                        else:
-                            event[k] = v
-                else:
-                    # Empty line, terminates an event.  Note that event['tag']
-                    # is a salt-api extension to SSE to avoid having to decode
-                    # json data if you don't care about it.  To get to the
-                    # interesting stuff, you want event['data'], which is json.
-                    # TODO: this should probably really be debug level
-                    self.log.info("Got event '{}'".format(str(event)))
+                with self._completion_lock:
+                    if line:
+                        line = line.decode('utf-8')
+                        colon = line.find(':')
+                        if colon > 0:
+                            k = line[:colon]
+                            v = line[colon+2:]
+                            if k == "retry":
+                                # TODO: find out if we need to obey this reconnection time
+                                self.log.warn("Server requested retry {}, ignored".format(v))
+                            else:
+                                event[k] = v
+                    else:
+                        # Empty line, terminates an event.  Note that event['tag']
+                        # is a salt-api extension to SSE to avoid having to decode
+                        # json data if you don't care about it.  To get to the
+                        # interesting stuff, you want event['data'], which is json.
+                        self.log.debug("Got event '{}'".format(str(event)))
 
-                    # If we actually wanted to do something with the event,
-                    # say, we want to notice that some long salt run has
-                    # finished, we'd call some notify method here (TBD).
+                        # If we're actually interested in this event (i.e. it's
+                        # in our completion dict), fire off that completion's
+                        # _process_result() callback and remove it from our list.
+                        if event['tag'] in self._all_completions:
+                            self.log.debug("Using {}".format(event['data']))
+                            self._all_completions[event['tag']]._process_result(event['data'])
+                            # TODO: decide whether it's bad to delete the completion
+                            # here -- would we ever need to resurrect it?
+                            del self._all_completions[event['tag']]
 
-                    # If you want to have some fun, try
-                    # `ceph daemon mgr.$(hostname) config set debug_mgr 4/5`
-                    # then `salt '*' test.ping` on the master
-                    event = {}
+                        # If you want to have some fun, try
+                        # `ceph daemon mgr.$(hostname) config set debug_mgr 4/5`
+                        # then `salt '*' test.ping` on the master
+                        event = {}
             self._set_last_failure_msg("SSE read terminated")
         except Exception as ex:
             self.log.exception(ex)
