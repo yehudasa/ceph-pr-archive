@@ -243,6 +243,28 @@ else
 		    ceph-libboost-thread1.67-dev \
 		    ceph-libboost-timer1.67-dev
                 ;;
+            *Bionic*)
+                ensure_decent_gcc_on_ubuntu 7 bionic
+                install_pkg_on_ubuntu \
+		    ceph-libboost1.67 \
+		    dd38c27740c1f9a9e6719a07eef84a1369dc168b \
+		    xenial \
+		    ceph-libboost-atomic1.67-dev \
+		    ceph-libboost-chrono1.67-dev \
+		    ceph-libboost-container1.67-dev \
+		    ceph-libboost-context1.67-dev \
+		    ceph-libboost-coroutine1.67-dev \
+		    ceph-libboost-date-time1.67-dev \
+		    ceph-libboost-filesystem1.67-dev \
+		    ceph-libboost-iostreams1.67-dev \
+		    ceph-libboost-program-options1.67-dev \
+		    ceph-libboost-python1.67-dev \
+		    ceph-libboost-random1.67-dev \
+		    ceph-libboost-regex1.67-dev \
+		    ceph-libboost-system1.67-dev \
+		    ceph-libboost-thread1.67-dev \
+		    ceph-libboost-timer1.67-dev
+                ;;
             *)
                 $SUDO apt-get install -y gcc
                 ;;
