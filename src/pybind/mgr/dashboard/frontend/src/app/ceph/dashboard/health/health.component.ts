@@ -3,7 +3,8 @@ import { Component, OnDestroy, OnInit } from '@angular/core';
 
 import * as _ from 'lodash';
 
-import { DashboardService } from '../../../shared/api/dashboard.service';
+import { HealthService } from '../../../shared/api/health.service';
+import { LogsService } from '../../../shared/api/logs.service';
 
 @Component({
   selector: 'cd-health',
@@ -11,18 +12,22 @@ import { DashboardService } from '../../../shared/api/dashboard.service';
   styleUrls: ['./health.component.scss']
 })
 export class HealthComponent implements OnInit, OnDestroy {
-  contentData: any;
+  healthData: any;
+  logData: any;
   interval: number;
 
   constructor(
-    private dashboardService: DashboardService,
+    private healthService: HealthService,
+    private logsService: LogsService,
     public viewportScroller: ViewportScroller
   ) {}
 
   ngOnInit() {
-    this.getInfo();
+    this.getHealth();
+    this.getLogs();
     this.interval = window.setInterval(() => {
-      this.getInfo();
+      this.getHealth();
+      this.getLogs();
     }, 5000);
   }
 
@@ -30,9 +35,15 @@ export class HealthComponent implements OnInit, OnDestroy {
     clearInterval(this.interval);
   }
 
-  getInfo() {
-    this.dashboardService.getHealth().subscribe((data: any) => {
-      this.contentData = data;
+  getHealth() {
+    this.healthService.getMinimalHealth().subscribe((data: any) => {
+      this.healthData = data;
+    });
+  }
+
+  getLogs() {
+    this.logsService.getLogs().subscribe((data: any) => {
+      this.logData = data;
     });
   }
 
@@ -41,9 +52,9 @@ export class HealthComponent implements OnInit, OnDestroy {
     const ratioData = [];
 
     ratioLabels.push('Writes');
-    ratioData.push(this.contentData.client_perf.write_op_per_sec);
+    ratioData.push(this.healthData.client_perf.write_op_per_sec);
     ratioLabels.push('Reads');
-    ratioData.push(this.contentData.client_perf.read_op_per_sec);
+    ratioData.push(this.healthData.client_perf.read_op_per_sec);
 
     chart.dataset[0].data = ratioData;
     chart.labels = ratioLabels;

@@ -4,19 +4,51 @@ from __future__ import absolute_import
 from .helper import DashboardTestCase
 
 
-class DashboardTest(DashboardTestCase):
+class HealthTest(DashboardTestCase):
     CEPHFS = True
 
-    def test_health(self):
-        data = self._get("/api/dashboard/health")
+    def test_minimal_health(self):
+        data = self._get("/api/health/minimal")
+        self.assertStatus(200)
+
+        self.assertNotIn('audit_log', data)
+        self.assertIn('client_perf', data)
+        self.assertSortedEqual(
+            data['client_perf'].keys(),
+            ['read_bytes_sec', 'read_op_per_sec',
+             'recovering_bytes_per_sec', 'write_bytes_sec',
+             'write_op_per_sec']
+        )
+        self.assertNotIn('clog', data)
+        self.assertIn('df', data)
+        self.assertEqual(data['df'].keys(), ['stats'])
+        self.assertSortedEqual(
+            data['df']['stats'].keys(),
+            ['total_avail_bytes', 'total_bytes', 'total_objects',
+             'total_used_bytes']
+        )
+        self.assertIn('fs_map', data)
+        self.assertSortedEqual(
+            data['fs_map'].keys(), ['filesystems', 'standbys'])
+        for fs in data['fs_map']['filesystems']:
+            self.assertEqual(fs.keys(), ['mdsmap'])
+            self.assertEqual(fs['mdsmap'].keys(), ['info'])
+            for item in fs['mdsmap']['info'].values():
+                self.assertEqual(item.keys(), ['state'])
+        self.assertIn('health', data)
+        self.assertSortedEqual(data['health'].keys(), ['checks', 'status'])
+        self.assertIn('hosts', data)
+
+    def test_full_health(self):
+        data = self._get("/api/health/full")
         self.assertStatus(200)
 
         self.assertIn('health', data)
         self.assertIn('mon_status', data)
         self.assertIn('fs_map', data)
         self.assertIn('osd_map', data)
-        self.assertIn('clog', data)
-        self.assertIn('audit_log', data)
+        self.assertNotIn('clog', data)
+        self.assertNotIn('audit_log', data)
         self.assertIn('pools', data)
         self.assertIn('mgr_map', data)
         self.assertIn('df', data)
@@ -30,8 +62,6 @@ class DashboardTest(DashboardTestCase):
         self.assertIsNotNone(data['mon_status'])
         self.assertIsNotNone(data['fs_map'])
         self.assertIsNotNone(data['osd_map'])
-        self.assertIsNotNone(data['clog'])
-        self.assertIsNotNone(data['audit_log'])
         self.assertIsNotNone(data['pools'])
         self.assertIsNotNone(data['scrub_status'])
         self.assertIsNotNone(data['pg_info'])
@@ -48,10 +78,9 @@ class DashboardTest(DashboardTestCase):
         self.assertIsNotNone(data['mgr_map'])
         self.assertIsNotNone(data['df'])
 
-
     @DashboardTestCase.RunAs('test', 'test', ['pool-manager'])
     def test_health_permissions(self):
-        data = self._get("/api/dashboard/health")
+        data = self._get("/api/health/full")
         self.assertStatus(200)
 
         self.assertIn('health', data)
