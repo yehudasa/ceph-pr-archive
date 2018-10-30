@@ -2,6 +2,7 @@ import { Component, OnInit } from '@angular/core';
 import { FormControl, Validators } from '@angular/forms';
 import { ActivatedRoute, Router } from '@angular/router';
 
+import { I18n } from '@ngx-translate/i18n-polyfill';
 import * as _ from 'lodash';
 import { forkJoin } from 'rxjs';
 
@@ -35,7 +36,7 @@ export class PoolFormComponent implements OnInit {
   info: PoolFormInfo;
   routeParamsSubscribe: any;
   editing = false;
-  data = new PoolFormData();
+  data = new PoolFormData(this.i18n);
   externalPgChange = false;
   current = {
     rules: []
@@ -49,7 +50,8 @@ export class PoolFormComponent implements OnInit {
     private authStorageService: AuthStorageService,
     private formatter: FormatterService,
     private taskWrapper: TaskWrapperService,
-    private ecpService: ErasureCodeProfileService
+    private ecpService: ErasureCodeProfileService,
+    private i18n: I18n
   ) {
     this.editing = this.router.url.startsWith('/pool/edit');
     this.authenticate();
