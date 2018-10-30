@@ -2,7 +2,7 @@
 A Detailed Documentation on How to Set up Ceph Kerberos Authentication
 =========================================================================================
 Daniel Oliveira (doliveira@suse.com)
-Last update: Oct 3, 2018
+Last update: Oct 25, 2018
 
 This document provides details on the Kerberos authorization protocol. This is the 1st
 draft and we will try to keep it updated along with code changes that might take place.
