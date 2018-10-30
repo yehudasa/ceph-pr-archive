@@ -51,7 +51,7 @@ def setup_module():
     rados.create_pool(pool_name)
     global ioctx
     ioctx = rados.open_ioctx(pool_name)
-    ioctx.application_enable('rbd')
+    RBD().pool_init(ioctx, True)
     global features
     features = os.getenv("RBD_FEATURES")
     features = int(features) if features is not None else 61
@@ -376,6 +376,28 @@ def test_config_list():
 
     for option in rbd.config_list(ioctx):
         eq(option['source'], RBD_CONFIG_SOURCE_CONFIG)
+
+@require_new_format()
+def test_pool_stats():
+    rbd = RBD()
+
+    create_image()
+    create_image()
+    create_image()
+    create_image()
+    with Image(ioctx, image_name) as image:
+        image.create_snap('snap')
+        image.resize(0)
+
+    stats = rbd.pool_stats_get(ioctx)
+    eq(stats['image_count'], 4)
+    eq(stats['image_provisioned_bytes'], 3 * IMG_SIZE)
+    eq(stats['image_max_provisioned_bytes'], 4 * IMG_SIZE)
+    eq(stats['image_snap_count'], 1)
+    eq(stats['trash_count'], 0)
+    eq(stats['trash_provisioned_bytes'], 0)
+    eq(stats['trash_max_provisioned_bytes'], 0)
+    eq(stats['trash_snap_count'], 0)
 
 def rand_data(size):
     return os.urandom(size)
