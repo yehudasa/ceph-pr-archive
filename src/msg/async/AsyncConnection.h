@@ -134,6 +134,8 @@ class AsyncConnection : public Connection {
    return target_addr;
  }
 
+ bool update_socket_addr(uint32_t type);
+
  private:
   enum {
     STATE_NONE,

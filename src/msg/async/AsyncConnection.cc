@@ -35,7 +35,7 @@
 #undef dout_prefix
 #define dout_prefix _conn_prefix(_dout)
 ostream& AsyncConnection::_conn_prefix(std::ostream *_dout) {
-  return *_dout << "-- " << async_msgr->get_myaddrs() << " >> "
+  return *_dout << "-- " << socket_addr << " >> "
 		<< target_addr << " conn(" << this
 		<< (msgr2 ? " msgr2" : " legacy")
                 << " :" << port
@@ -402,6 +402,11 @@ void AsyncConnection::process() {
       }
 
       center->delete_file_event(cs.fd(), EVENT_WRITABLE);
+
+      update_socket_addr(target_addr.get_type());
+      lock.unlock();
+      async_msgr->learned_addr(socket_addr);
+      lock.lock();
       ldout(async_msgr->cct, 10)
           << __func__ << " connect successfully, ready to send banner" << dendl;
       state = STATE_CONNECTION_ESTABLISHED;
@@ -440,6 +445,28 @@ bool AsyncConnection::is_connected() {
   return protocol->is_connected();
 }
 
+bool AsyncConnection::update_socket_addr(uint32_t type) {
+  sockaddr_storage ss;
+  socklen_t slen = sizeof(ss);
+  int r = getsockname(cs.fd(), (sockaddr *)&ss, &slen);
+  if (r == 0) {
+    entity_addr_t bind_addr;
+    bind_addr.set_type(type);
+    bind_addr.set_sockaddr((sockaddr*)&ss);
+    for (auto a : async_msgr->get_myaddrs().v) {
+      if (a.is_same_host(bind_addr) && a.get_port() == bind_addr.get_port()) {
+        socket_addr = a;
+        break;
+      }
+    }
+    if (socket_addr.is_blank_ip()) {
+      socket_addr = bind_addr;
+    }
+    return true;
+  }
+  return false;
+}
+
 void AsyncConnection::connect(const entity_addrvec_t &addrs, int type,
                               entity_addr_t &target) {
 
@@ -470,8 +497,13 @@ void AsyncConnection::accept(ConnectedSocket socket, entity_addr_t &addr)
 
   std::lock_guard<std::mutex> l(lock);
   cs = std::move(socket);
-  socket_addr = addr;
+
+  if (!update_socket_addr(addr.get_type())) {
+    socket_addr = addr;
+  }
+
   target_addr = addr; // until we know better
+
   state = STATE_ACCEPTING;
   protocol->accept();
   // rescheduler connection in order to avoid lock dep
