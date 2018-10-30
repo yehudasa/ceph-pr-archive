@@ -154,6 +154,15 @@ class Orchestrator(object):
         """
         raise NotImplementedError()
 
+    def list_services(self, service_type=None):
+        """
+        List available services of which the orchestrator is aware.
+
+        The service_type argument is an optional filter. The default is to
+        list all services. Returns a list of ServiceLocation objects.
+        """
+        raise NotImplementedError()
+
     def describe_service(self, service_type, service_id):
         """
         Describe a service (of any kind) that is already configured in
@@ -319,6 +328,9 @@ class ServiceLocation(object):
         # This is the <foo> in mds.<foo>, the ID that will appear
         # in the FSMap/ServiceMap.
         self.daemon_name = None
+
+        # The type of service (osd, mon, mgr, etc.)
+        self.service_type = None
 
 
 class ServiceDescription(object):
