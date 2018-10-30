@@ -70,7 +70,7 @@ POOL_METADATA = ('pool_id', 'name')
 
 RGW_METADATA = ('ceph_daemon', 'hostname', 'ceph_version')
 
-DISK_OCCUPATION = ( 'ceph_daemon', 'device','instance')
+DISK_OCCUPATION = ('ceph_daemon', 'device', 'db_device', 'wal_device', 'instance')
 
 NUM_OBJECTS = ['degraded', 'misplaced', 'unfound']
 
@@ -458,6 +458,10 @@ class Module(MgrModule):
                 if val and val != "unknown":
                     osd_dev_node = val
                     break
+            # collect bluestore db backend
+            osd_db_dev_node = osd_metadata.get('bluefs_db_dev_node', None)
+            # collect bluestore wal backend
+            osd_wal_dev_node = osd_metadata.get('bluefs_wal_dev_node', None)
             osd_hostname = osd_metadata.get('hostname', None)
             if osd_dev_node and osd_hostname:
                 self.log.debug("Got dev for osd {0}: {1}/{2}".format(
@@ -465,6 +469,8 @@ class Module(MgrModule):
                 self.metrics['disk_occupation'].set(1, (
                     "osd.{0}".format(id_),
                     osd_dev_node,
+                    osd_db_dev_node,
+                    osd_wal_dev_node,
                     osd_hostname
                 ))
             else:
