@@ -4,7 +4,7 @@ import { HostService } from '../../../shared/api/host.service';
 import { CdTableColumn } from '../../../shared/models/cd-table-column';
 import { CdTableFetchDataContext } from '../../../shared/models/cd-table-fetch-data-context';
 import { CdTableSelection } from '../../../shared/models/cd-table-selection';
-import { Permissions } from '../../../shared/models/permissions';
+import { Permission, Permissions } from '../../../shared/models/permissions';
 import { CephShortVersionPipe } from '../../../shared/pipes/ceph-short-version.pipe';
 import { AuthStorageService } from '../../../shared/services/auth-storage.service';
 
@@ -14,6 +14,7 @@ import { AuthStorageService } from '../../../shared/services/auth-storage.servic
   styleUrls: ['./hosts.component.scss']
 })
 export class HostsComponent implements OnInit {
+  grafanaScope: Permission;
   permissions: Permissions;
   columns: Array<CdTableColumn> = [];
   hosts: Array<object> = [];
@@ -30,6 +31,7 @@ export class HostsComponent implements OnInit {
     private cephShortVersionPipe: CephShortVersionPipe
   ) {
     this.permissions = this.authStorageService.getPermissions();
+    this.grafanaScope = this.authStorageService.getPermissions().grafana;
   }
 
   ngOnInit() {

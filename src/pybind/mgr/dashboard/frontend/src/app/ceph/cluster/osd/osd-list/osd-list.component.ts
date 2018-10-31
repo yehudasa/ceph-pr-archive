@@ -39,6 +39,7 @@ export class OsdListComponent implements OnInit {
   @ViewChild('safeToDestroyBodyTpl')
   safeToDestroyBodyTpl: TemplateRef<any>;
 
+  grafanaScope: Permission;
   permission: Permission;
   tableActions: CdTableAction[];
   bsModalRef: BsModalRef;
@@ -58,6 +59,7 @@ export class OsdListComponent implements OnInit {
     private modalService: BsModalService
   ) {
     this.permission = this.authStorageService.getPermissions().osd;
+    this.grafanaScope = this.authStorageService.getPermissions().grafana;
     this.tableActions = [
       {
         name: 'Scrub',

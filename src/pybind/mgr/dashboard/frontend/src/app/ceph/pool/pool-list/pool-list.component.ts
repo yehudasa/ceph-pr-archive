@@ -36,6 +36,7 @@ export class PoolListComponent implements OnInit {
   permission: Permission;
   tableActions: CdTableAction[];
   viewCacheStatusList: any[];
+  grafanaScope: Permission;
 
   constructor(
     private poolService: PoolService,
@@ -45,6 +46,7 @@ export class PoolListComponent implements OnInit {
     private modalService: BsModalService
   ) {
     this.permission = this.authStorageService.getPermissions().pool;
+    this.grafanaScope = this.authStorageService.getPermissions().grafana;
     this.tableActions = [
       { permission: 'create', icon: 'fa-plus', routerLink: () => '/pool/add', name: 'Add' },
       {

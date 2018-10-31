@@ -46,6 +46,7 @@
     </ng-template>
   </tab>
   <tab i18n-heading
+       *ngIf="grafanaScope.read"
        heading="Overall Performance">
     <cd-grafana [grafanaPath]="'lo02I1Aiz/osd-overview?'"
                 grafanaStyle="three">

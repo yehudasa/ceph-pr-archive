@@ -12,6 +12,7 @@
   </tab>
 
   <tab i18n-heading
+       *ngIf="grafanaScope.read"
        heading="Overall Performance">
     <cd-grafana [grafanaPath]="'WAkugZpiz/rgw-overview?'"
                 grafanaStyle="two">
