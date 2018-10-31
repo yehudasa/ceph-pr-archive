@@ -117,6 +117,17 @@ class TestDevice(object):
         disk = device.Device("/dev/sda")
         assert not disk.used_by_ceph
 
+    def test_ordering(self, device_info):
+        disk1 = device.Device("/dev/sda")
+        disk2 = device.Device("/dev/sdb")
+        disk2._valid = False
+        disk3 = device.Device("/dev/sdc")
+        disk4 = device.Device("/dev/sdd")
+        disk4._valid = False
+        assert disk1 < disk2 and disk2 > disk1
+        assert disk3 < disk2 and disk2 > disk3
+        assert disk1 < disk3 and disk3 > disk1
+        assert disk3 < disk4 and disk4 > disk3
 
 ceph_partlabels = [
     'ceph data', 'ceph journal', 'ceph block',
