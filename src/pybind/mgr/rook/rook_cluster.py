@@ -125,6 +125,27 @@ class RookCluster(object):
 
         return nodename_to_devices
 
+    def list_pods(self, service_type):
+        """List the pods running in the cluster."""
+        pods_summary = []
+
+        label_filter = "rook_cluster={0}".format(self.cluster_name)
+        if service_type != None:
+            label_filter += ",app=rook-ceph-{0}".format(service_type)
+
+        pods = self.k8s.list_namespaced_pod(self.rook_namespace,
+                                            label_selector=label_filter)
+
+        for p in pods.items:
+            d = p.to_dict()
+            pods_summary.append({
+                "name": d['metadata']['name'],
+                "nodename": d['spec']['node_name'],
+                "labels": d['metadata']['labels']
+            })
+
+        return pods_summary
+
     def describe_pods(self, service_type, service_id):
         # Go query the k8s API about deployment, containers related to this
         # filesystem
