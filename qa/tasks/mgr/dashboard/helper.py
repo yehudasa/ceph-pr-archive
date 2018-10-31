@@ -355,6 +355,9 @@ class DashboardTestCase(MgrTestCase):
         if detail:
             self.assertEqual(body['detail'], detail)
 
+    def assertSortedEqual(self, first, second):
+        self.assertEqual(sorted(first), sorted(second))
+
     @classmethod
     def _ceph_cmd(cls, cmd):
         res = cls.mgr_cluster.mon_manager.raw_cluster_cmd(*cmd)
