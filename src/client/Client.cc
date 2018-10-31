@@ -10332,13 +10332,8 @@ int Client::test_dentry_handling(bool can_invalidate)
     r = _do_remount(false);
   }
   if (r) {
-    bool should_abort = cct->_conf.get_val<bool>("client_die_on_failed_dentry_invalidate");
-    if (should_abort) {
-      lderr(cct) << "no method to invalidate kernel dentry cache; quitting!" << dendl;
-      ceph_abort();
-    } else {
-      lderr(cct) << "no method to invalidate kernel dentry cache; expect issues!" << dendl;
-    }
+    lderr(cct) << "no method to invalidate kernel dentry cache; expect issues!"
+               << dendl;
   }
   return r;
 }
