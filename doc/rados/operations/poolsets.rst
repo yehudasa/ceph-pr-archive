@@ -56,8 +56,15 @@ Automatic adjustment
 
 **todo** explain rules
 
+All poolsets are initially created with adjustment policy `auto`, i.e.
+their placement group configuration will be automatically adjusted
+according to usage and available capacity.  
+
 Configuration
 =============
+
+Placement group counts
+----------------------
 
 The automated selection/adjustment of placement groups is primarily
 driven by the ``mon_target_pg_per_osd`` setting.  This is a new
@@ -69,5 +76,42 @@ the target -- this setting has existed in Ceph since before
 automated PG management was added, and continues to operate
 as a check on the pg_nums chosen by the automated process.
 
-**TODO** explain how to toggle auto adjustment per poolset
+
+Toggling automatic adjustment
+-----------------------------
+
+All poolsets have a 'policy' attribute that controls how Ceph controls
+the placement group configuration of pools.  There are three possible
+settings:
+
+- ``autoscale``: Automatically adjust placement group counts if outside the
+  limits controlled by ``mon_target_pg_per_osd`` and ``mon_max_pg_per_osd``.
+- ``warn``: Raise health warnings if the placement group configuration
+  is outside acceptable limits and should be adjusted.
+- ``silent``: No action or warning on placement group counts.
+
+Poolset attributes may be adjusted using the ``set`` command:
+
+::
+
+    ceph poolset set <poolset name> <property> <value>
+
+For example, to enable auto adjustment on a poolset ``myset``:
+
+::
+
+    ceph poolset set myset policy autoscale
+
+Upgrades
+========
+
+When upgrading to Ceph 14.x *Nautilus*, or when any individual pools are created
+directly, they will be automatically added to poolsets.  Poolsets are constructed
+according to metadata: e.g. pools that are part of a CephFS filesystem are
+automatically added to a poolset for the filesystem.
+
+Poolsets that are automatically created will have the ``warn`` adjustment
+policy.  They can be set to ``autoscale`` to enable automatic adjustment
+of placement group configuration.
+
 

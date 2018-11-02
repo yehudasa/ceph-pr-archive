@@ -246,6 +246,11 @@ class PoolSet(object):
     POLICY_WARN = 'warn'  # Emit warning if the pg num is too low
     POLICY_AUTOSCALE = 'autoscale'  # Automatically adjust pg num up and down.
 
+    POLICIES = [
+        POLICY_SILENT, POLICY_WARN, POLICY_AUTOSCALE
+    ]
+
+
     # Simple struct versioning, imitating our C++ ::encode conventions
     ENC_VERSION = 1
     ENC_COMPAT_VERSION = 1
@@ -261,7 +266,6 @@ class PoolSet(object):
         # While creating pools, disable the poolset auto-generation from
         # osdmap updates, to avoid racing between that and the explicit poolset
         # creation.
-
         self._creating = False
 
         # During creation, we populate this with the pools we will create,
@@ -364,8 +368,9 @@ class Module(MgrModule):
             "perm": "rw"
         },
         {
-            "cmd": "poolset set name=param,type=CephChoices,"
-                   "strings=autoscale name=psname,type=CephString "
+            "cmd": "poolset set "
+                   "name=poolset,type=CephString "
+                   "name=key,type=CephChoices,strings=policy ",
                    "name=value,type=CephString",
             "desc": "Config poolset parameters",
             "perm": "rw"
@@ -1459,7 +1464,7 @@ class Module(MgrModule):
                 'prefix': 'osd pool rm',
                 'pool': pool_name,
                 'pool2': pool_name,
-                'sure': '--yes-i-really-really-mean-it'
+                'yes_i_really_really_mean_it': True
             })
             if r != 0:
                 return r, out, err
@@ -1470,8 +1475,25 @@ class Module(MgrModule):
         return 0, "", ""
 
     def _command_poolset_set(self, cmd):
-        # TODO: let people set their poolset policies
-        return -errno.ENOSYS, '', 'Not implemented'
+        try:
+            poolset = self._poolsets[cmd['poolset']]
+        except KeyError:
+            return -errno.ENOENT, '',
+                   "Poolset '{0}' not found".format(cmd['poolset'])
+
+        if cmd['key'] == 'policy':
+            if cmd['value'] not in PoolSet.POLICIES:
+                return -errno.EINVAL, '',
+                       "Unknown policy '{0}', options are {1}".format(
+                               cmd['key'], ",".join(PoolSet.POLICIES))
+
+            poolset.policy = cmd['value']
+            self._dirty = True
+            self._save()
+        else:
+            return -errno.EINVAL, '', "Unknown key '{0}'".format(cmd['key'])
+
+        return 0, '', ''
 
     def _do_create(self, poolset_name, pool_intents):
         """
