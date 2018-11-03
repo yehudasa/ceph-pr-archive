@@ -1427,19 +1427,18 @@ using namespace ceph;
       rebuild(ptr_node::create(buffer::create(_len)));
   }
 
-  void buffer::list::rebuild(ptr_node& nb)
+  void buffer::list::rebuild(
+    std::unique_ptr<buffer::ptr_node, buffer::ptr_node::disposer> nb)
   {
     unsigned pos = 0;
     for (auto& node : _buffers) {
-      nb.copy_in(pos, node.length(), node.c_str(), false);
+      nb->copy_in(pos, node.length(), node.c_str(), false);
       pos += node.length();
     }
     _memcopy_count += pos;
     _buffers.clear_and_dispose(ptr_node::disposer());
-    if (likely(nb.length())) {
-      _buffers.push_back(nb);
-    } else {
-      ptr_node::disposer()(&nb);
+    if (likely(nb->length())) {
+      _buffers.push_back(*nb.release());
     }
     invalidate_crc();
     last_p = begin();
@@ -1498,7 +1497,7 @@ using namespace ceph;
             buffer::create_aligned(unaligned._len, align_memory)));
         _memcopy_count += unaligned._len;
       }
-      _buffers.insert(p, ptr_node::create(unaligned._buffers.front()));
+      _buffers.insert(p, *ptr_node::create(unaligned._buffers.front()).release());
     }
     last_p = begin();
 
@@ -1665,7 +1664,7 @@ using namespace ceph;
   {
     _len += bl._len;
     for (const auto& node : bl._buffers) {
-      _buffers.push_back(ptr_node::create(node));
+      _buffers.push_back(*ptr_node::create(node).release());
     }
   }
 
@@ -1701,10 +1700,10 @@ using namespace ceph;
 
   void buffer::list::prepend_zero(unsigned len)
   {
-    auto& bp = ptr_node::create(len);
-    bp.zero(false);
+    auto bp = ptr_node::create(len);
+    bp->zero(false);
     _len += len;
-    _buffers.push_front(bp);
+    _buffers.push_front(*bp.release());
   }
   
   void buffer::list::append_zero(unsigned len)
@@ -1716,8 +1715,8 @@ using namespace ceph;
       len -= need;
     }
     if (len) {
-      auto& bp = ptr_node::create(buffer::create_page_aligned(len));
-      bp.zero(false);
+      auto bp = ptr_node::create(buffer::create_page_aligned(len));
+      bp->zero(false);
       push_back(std::move(bp));
     }
   }
@@ -1790,7 +1789,7 @@ using namespace ceph;
       // partial?
       if (off + len < curbuf->length()) {
 	//cout << "copying partial of " << *curbuf << std::endl;
-	_buffers.push_back( ptr_node::create( *curbuf, off, len ) );
+	_buffers.push_back(*ptr_node::create( *curbuf, off, len ).release());
 	_len += len;
 	break;
       }
@@ -1798,7 +1797,7 @@ using namespace ceph;
       // through end
       //cout << "copying end (all?) of " << *curbuf << std::endl;
       unsigned howmuch = curbuf->length() - off;
-      _buffers.push_back( ptr_node::create( *curbuf, off, howmuch ) );
+      _buffers.push_back(*ptr_node::create( *curbuf, off, howmuch ).release());
       _len += howmuch;
       len -= howmuch;
       off = 0;
@@ -1838,7 +1837,7 @@ using namespace ceph;
       // add a reference to the front bit
       //  insert it before curbuf (which we'll hose)
       //cout << "keeping front " << off << " of " << *curbuf << std::endl;
-      _buffers.insert( curbuf, ptr_node::create( *curbuf, 0, off ) );
+      _buffers.insert( curbuf, *ptr_node::create( *curbuf, 0, off ).release());
       _len += off;
     }
     
@@ -1953,11 +1952,11 @@ int buffer::list::read_file(const char *fn, std::string *error)
 
 ssize_t buffer::list::read_fd(int fd, size_t len)
 {
-  auto& bp = ptr_node::create(buffer::create(len));
-  ssize_t ret = safe_read(fd, (void*)bp.c_str(), len);
+  auto bp = ptr_node::create(buffer::create(len));
+  ssize_t ret = safe_read(fd, (void*)bp->c_str(), len);
   if (ret >= 0) {
-    bp.set_length(ret);
-    push_back(bp);
+    bp->set_length(ret);
+    push_back(std::move(bp));
   }
   return ret;
 }
@@ -2293,13 +2292,15 @@ bool buffer::ptr_node::dispose_if_hypercombined(
   return is_hypercombined;
 }
 
-buffer::ptr_node& buffer::ptr_node::create_hypercombined(
-  buffer::raw* const r)
+std::unique_ptr<buffer::ptr_node, buffer::ptr_node::disposer>
+buffer::ptr_node::create_hypercombined(buffer::raw* const r)
 {
   if (likely(r->nref == 0)) {
-    return *new (&r->bptr_storage) ptr_node(r);
+    return std::unique_ptr<buffer::ptr_node, buffer::ptr_node::disposer>(
+      new (&r->bptr_storage) ptr_node(r));
   } else {
-    return *new ptr_node(r);
+    return std::unique_ptr<buffer::ptr_node, buffer::ptr_node::disposer>(
+      new ptr_node(r));
   }
 }
 
