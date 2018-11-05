@@ -141,6 +141,8 @@ class MDSRank {
     friend class C_Drop_Cache;
 
     friend class C_CacheDropExecAndReply;
+    friend class C_ScrubExecAndReply;
+    friend class C_TagPathExecAndReply;
 
     mds_rank_t get_nodeid() const { return whoami; }
     int64_t get_metadata_pool();
@@ -456,9 +458,10 @@ class MDSRank {
 
   protected:
     void dump_clientreplay_status(Formatter *f) const;
-    void command_scrub_path(Formatter *f, std::string_view path, vector<string>& scrubop_vec);
+    void command_scrub_path(Formatter *f, std::string_view path,
+                            const vector<string>& scrubop_vec, Context *on_finish);
     void command_tag_path(Formatter *f, std::string_view path,
-                          std::string_view tag);
+                          std::string_view tag, Context *on_finish);
     void command_flush_path(Formatter *f, std::string_view path);
     void command_flush_journal(Formatter *f);
     void command_get_subtrees(Formatter *f);
