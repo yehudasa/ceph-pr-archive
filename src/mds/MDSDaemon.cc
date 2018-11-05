@@ -667,6 +667,10 @@ const std::vector<MDSDaemon::MDSCommand>& MDSDaemon::get_commands()
     MDSCommand("scrub_path name=path,type=CephString name=scrubops,type=CephChoices,strings=force|recursive|repair,n=N,req=false",
                "scrub an inode and output results"),
     MDSCommand("tag path name=path,type=CephString name=tag,type=CephString", "Apply scrub tag recursively"),
+    MDSCommand("scrub abort", "Abort in progress scrub operation(s)"),
+    MDSCommand("scrub pause", "Pause in progress scrub operation(s)"),
+    MDSCommand("scrub resume", "Resume paused scrub operation(s)"),
+    MDSCommand("scrub status", "Status of scrub operation"),
   };
   return commands;
 };
