@@ -50,9 +50,7 @@ export class CrushmapComponent implements OnInit {
     const settings = { static: true };
 
     let value: string = node.name + ' (' + node.type + ')';
-    if (node.status) {
-      value += '--' + node.status;
-    }
+    let status: string = node.status;
 
     const children: any[] = [];
     if (node.children) {
@@ -60,10 +58,10 @@ export class CrushmapComponent implements OnInit {
         children.push(treeNodeMap[childId]);
       });
 
-      return { value, settings, id, children };
+      return { value, status, settings, id, children };
     }
 
-    return { value, settings, id };
+    return { value, status, settings, id };
   }
 
   onNodeSelected(e: NodeEvent) {
