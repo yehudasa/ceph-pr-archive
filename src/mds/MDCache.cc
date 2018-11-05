@@ -12176,12 +12176,13 @@ void C_MDS_RetryRequest::finish(int r)
 
 class C_MDS_EnqueueScrub : public Context
 {
+  std::string_view tag;
   Formatter *formatter;
   Context *on_finish;
 public:
   ScrubHeaderRef header;
-  C_MDS_EnqueueScrub(Formatter *f, Context *fin) :
-    formatter(f), on_finish(fin), header(nullptr) {}
+  C_MDS_EnqueueScrub(std::string_view tag, Formatter *f, Context *fin) :
+    tag(tag), formatter(f), on_finish(fin), header(nullptr) {}
 
   Context *take_finisher() {
     Context *fin = on_finish;
@@ -12190,7 +12191,15 @@ public:
   }
 
   void finish(int r) override {
-    if (r < 0) { // we failed the lookup or something; dump ourselves
+    if (r == 0) {
+      // since recursive scrub is asynchronous, dump minimal output
+      // to not upset cli tools.
+      if (header && header->get_recursive()) {
+        formatter->open_object_section("results");
+        formatter->dump_string("scrub_tag", tag);
+        formatter->close_section(); // results
+      }
+    } else { // we failed the lookup or something; dump ourselves
       formatter->open_object_section("results");
       formatter->dump_int("return_code", r);
       formatter->close_section(); // results
@@ -12216,7 +12225,6 @@ void MDCache::enqueue_scrub(
     mdr->set_filepath(path);
   }
 
-  C_MDS_EnqueueScrub *cs = new C_MDS_EnqueueScrub(f, fin);
   if (tag.empty()) {
     uuid_d uuid_gen;
     uuid_gen.generate_random();
@@ -12226,18 +12234,12 @@ void MDCache::enqueue_scrub(
     tag = uuid_str;
   }
 
+  C_MDS_EnqueueScrub *cs = new C_MDS_EnqueueScrub(tag, f, fin);
   cs->header = std::make_shared<ScrubHeader>(
       tag, force, recursive, repair, f);
 
   mdr->internal_op_finish = cs;
   enqueue_scrub_work(mdr);
-
-  // since recursive scrub is asynchronous, dump minimal output
-  // to not upset cli tools.
-  if (recursive) {
-    f->open_object_section("results");
-    f->close_section(); // results
-  }
 }
 
 void MDCache::enqueue_scrub_work(MDRequestRef& mdr)
