@@ -227,8 +227,8 @@ Alternatively, you can use Python's native package installation method::
   $ pip install tox
   $ pip install coverage
 
-To run the tests, run ``run-tox.sh`` in the dashboard directory (where ``tox.ini``
-is located).
+To run the tests, run ``run-tox.sh`` in the dashboard directory (where
+``tox.ini`` is located).
 
 We also collect coverage information from the backend code. You can check the
 coverage information provided by the tox output, or by running the following
