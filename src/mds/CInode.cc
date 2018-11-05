@@ -4107,16 +4107,14 @@ void CInode::validate_disk_state(CInode::validated_data *results,
       in->mdcache->mds->objecter->read(oid, object_locator_t(pool), fetch, CEPH_NOSNAP,
 				       NULL, 0, fin);
       using ceph::encode;
-      if (!tag.empty()) {
-	ObjectOperation scrub_tag;
-        bufferlist tag_bl;
-        encode(tag, tag_bl);
-        scrub_tag.setxattr("scrub_tag", tag_bl);
-        SnapContext snapc;
-        in->mdcache->mds->objecter->mutate(oid, object_locator_t(pool), scrub_tag, snapc,
-					   ceph::real_clock::now(),
-					   0, NULL);
-      }
+      ObjectOperation scrub_tag;
+      bufferlist tag_bl;
+      encode(tag, tag_bl);
+      scrub_tag.setxattr("scrub_tag", tag_bl);
+      SnapContext snapc;
+      in->mdcache->mds->objecter->mutate(oid, object_locator_t(pool),
+                                         scrub_tag, snapc,
+                                         ceph::real_clock::now(), 0, NULL);
     }
 
     bool _start(int rval) {
@@ -4790,12 +4788,8 @@ void CInode::scrub_finished(MDSInternalContextBase **c) {
   if (scrub_infop->header->get_origin() == this) {
     // We are at the point that a tagging scrub was initiated
     LogChannelRef clog = mdcache->mds->clog;
-    if (scrub_infop->header->get_tag().empty()) {
-      clog->info() << "scrub complete";
-    } else {
-      clog->info() << "scrub complete with tag '"
-                   << scrub_infop->header->get_tag() << "'";
-    }
+    clog->info() << "scrub complete with tag '"
+                 << scrub_infop->header->get_tag() << "'";
   }
 }
 

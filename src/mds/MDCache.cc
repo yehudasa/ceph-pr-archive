@@ -12217,6 +12217,15 @@ void MDCache::enqueue_scrub(
   }
 
   C_MDS_EnqueueScrub *cs = new C_MDS_EnqueueScrub(f, fin);
+  if (tag.empty()) {
+    uuid_d uuid_gen;
+    uuid_gen.generate_random();
+
+    char uuid_str[37];
+    uuid_gen.print(uuid_str);
+    tag = uuid_str;
+  }
+
   cs->header = std::make_shared<ScrubHeader>(
       tag, force, recursive, repair, f);
 
