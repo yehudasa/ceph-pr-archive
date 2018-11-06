@@ -105,7 +105,7 @@ class HealthData(object):
         fs_map = mgr.get('fs_map')
         if self._minimal:
             fs_map = self._partial_dict(fs_map, ['filesystems', 'standbys'])
-            fs_map['standbys'] = [dict() for item in fs_map['standbys']]
+            fs_map['standbys'] = [{}] * len(fs_map['standbys'])
             fs_map['filesystems'] = [self._partial_dict(item, ['mdsmap']) for
                                      item in fs_map['filesystems']]
             for fs in fs_map['filesystems']:
@@ -126,15 +126,15 @@ class HealthData(object):
         mgr_map = mgr.get('mgr_map')
         if self._minimal:
             mgr_map = self._partial_dict(mgr_map, ['active_name', 'standbys'])
-            mgr_map['standbys'] = [dict() for _ in mgr_map['standbys']]
+            mgr_map['standbys'] = [{}] * len(mgr_map['standbys'])
         return mgr_map
 
     def mon_status(self):
         mon_status = json.loads(mgr.get('mon_status')['json'])
         if self._minimal:
             mon_status = self._partial_dict(mon_status, ['monmap', 'quorum'])
-            mon_status['monmap']['mons'] = [
-                dict() for _ in mon_status['monmap']['mons']]
+            mon_status['monmap']['mons'] = [{}] * \
+                len(mon_status['monmap']['mons'])
         return mon_status
 
     def osd_map(self):
@@ -164,7 +164,7 @@ class HealthData(object):
     def pools(self):
         pools = CephService.get_pool_list_with_stats()
         if self._minimal:
-            pools = [dict() for _ in pools]
+            pools = [{}] * len(pools)
         return pools
 
     def rgw(self):
