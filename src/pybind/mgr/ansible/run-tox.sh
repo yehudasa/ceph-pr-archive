@@ -3,7 +3,7 @@
 # run from ./ or from ../
 : ${MGR_INSIGHTS_VIRTUALENV:=/tmp/mgr-ansible-virtualenv}
 : ${WITH_PYTHON2:=ON}
-: ${WITH_PYTHON3:=OFF}
+: ${WITH_PYTHON3:=ON}
 : ${CEPH_BUILD_DIR:=$PWD/.tox}
 test -d ansible && cd ansible
 
