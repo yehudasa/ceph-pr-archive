@@ -400,6 +400,9 @@ public:
     release_object_locks(manager);
   }
 
+  bool pg_is_remote_backfilling() override {
+    return is_remote_backfilling();
+  }
   void pg_add_local_num_bytes(int64_t num_bytes) override {
     add_local_num_bytes(num_bytes);
   }

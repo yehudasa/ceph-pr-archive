@@ -1211,6 +1211,10 @@ public:
     return primary_num_bytes.load() - local_num_bytes.load();
   }
 
+  bool is_remote_backfilling() {
+    return primary_num_bytes.load() > 0;
+  }
+
   void set_reserved_num_bytes(int64_t primary, int64_t local);
   void clear_reserved_num_bytes();
 
