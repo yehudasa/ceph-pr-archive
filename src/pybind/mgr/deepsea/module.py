@@ -121,31 +121,39 @@ class DeepSeaOrchestrator(MgrModule, orchestrator.Orchestrator):
 
 
     def get_inventory(self, node_filter=None):
-        # Returns an approximation of inventory, so far just hostnames, not disks
-        # (We don't yet have a DeepSea runner which will conveniently return
-        # all that stuff at once, so faking it up with 'select.minions')
-        # TODO: implement node filter (check `ceph orchestrator device ls <node>`)
 
         def process_result(raw_event):
             result = []
             raw_event = json.loads(raw_event)
             if raw_event['data']['success']:
-                for hostname in raw_event["data"]["return"]:
-                    # Pretending there's no disks for now (because the 'select.minions'
-                    # runner does't expose that
-                    result.append(orchestrator.InventoryNode(hostname, []))
+                for node_name, node_devs in raw_event["data"]["return"].items():
+                    devs = []
+                    for d in node_devs:
+                        dev = orchestrator.InventoryDevice()
+                        dev.blank = d['blank']
+                        dev.type = d['type']
+                        dev.id = d['id']
+                        dev.size = d['size']
+                        dev.extended = d['extended']
+                        dev.metadata_space_free = d['metadata_space_free']
+                        devs.append(dev)
+                    result.append(orchestrator.InventoryNode(node_name, devs))
             return result
 
         with self._completion_lock:
             c = DeepSeaReadCompletion(process_result)
 
+            nodes = []
+            roles = []
+            if node_filter:
+                nodes = node_filter.nodes
+                roles = node_filter.labels
+
             resp = self._do_request_with_login("POST", data = {
                 "client": "runner_async",
-                "fun": "select.minions",
-                "cluster": "ceph"
-                # could add "role:" here to get individual roles
-                # if node_filter was requested (DeepSea role should map to
-                # Orchestrator label concept)
+                "fun": "mgr_orch.inventory",
+                "nodes": nodes,
+                "roles": roles
             })
 
             # ['return'][0]['tag'] in the resonse JSON is what we need to match
@@ -155,7 +163,8 @@ class DeepSeaOrchestrator(MgrModule, orchestrator.Orchestrator):
             return c
 
         # TODO: It's possilbe _do_request_with_login could throw an exception
-        # (e.g. salt-api down).  How to handle this?
+        # (e.g. salt-api down).  How to handle this?  (To test, try setting the
+        # wrong password, then run `ceph orchestrator device ls`)
 
 
     def describe_service(self, service_type, service_id):
@@ -376,6 +385,7 @@ class DeepSeaOrchestrator(MgrModule, orchestrator.Orchestrator):
             if resp.ok:
                 return resp
             else:
+                # TODO: this results in a lot of junk in the logs for e.g.: 401 / not authorized
                 msg = "Request failed with status code {}".format(resp.status_code)
                 self.log.error(msg)
                 raise RequestException(msg, resp.status_code)
