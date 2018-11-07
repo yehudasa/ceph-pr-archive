@@ -2,7 +2,7 @@ import { Component, OnInit } from '@angular/core';
 
 import { NodeEvent, TreeModel } from 'ng2-tree';
 
-import { DashboardService } from '../../../shared/api/dashboard.service';
+import { HealthService } from '../../../shared/api/health.service';
 
 @Component({
   selector: 'cd-crushmap',
@@ -15,12 +15,12 @@ export class CrushmapComponent implements OnInit {
   metadata: any;
   metadataKeyMap: { [key: number]: number } = {};
 
-  constructor(private dashboardService: DashboardService) {
+  constructor(private healthService: HealthService) {
     this.panelTitle = 'CRUSH map viewer';
   }
 
   ngOnInit() {
-    this.dashboardService.getHealth().subscribe((data: any) => {
+    this.healthService.getFullHealth().subscribe((data: any) => {
       this.tree = this._abstractTreeData(data);
     });
   }
