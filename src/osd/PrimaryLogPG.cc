@@ -4312,7 +4312,7 @@ void PrimaryLogPG::do_backfill_remove(OpRequestRef op)
 	      bv);
 	  if (r >= 0) {
 	    object_info_t oi(bv);
-            usersize = oi.size;
+            usersize = oi.size * pgbackend->get_ec_data_chunk_count();
           } else {
             dout(0) << __func__ << " " << ghobject_t(p.first, ghobject_t::NO_GEN, pg_whoami.shard)
                     << " can't get object info" << dendl;
