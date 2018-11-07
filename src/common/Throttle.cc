@@ -729,6 +729,7 @@ void TokenBucketThrottle::set_max(uint64_t m) {
 }
 
 void TokenBucketThrottle::set_average(uint64_t avg) {
+  Mutex::Locker lock(m_lock);
   m_avg = avg;
 }
 
@@ -738,6 +739,8 @@ void TokenBucketThrottle::add_tokens() {
     // put m_avg tokens into bucket.
     Mutex::Locker lock(m_lock);
     m_throttle.put(m_avg);
+    if (0 == m_avg || 0 == m_throttle.max)
+      tmp_blockers.swap(m_blockers);
     // check the m_blockers from head to tail, if blocker can get
     // enough tokens, let it go.
     while (!m_blockers.empty()) {
