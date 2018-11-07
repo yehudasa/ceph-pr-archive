@@ -133,6 +133,9 @@ class HealthData(object):
         mon_status = json.loads(mgr.get('mon_status')['json'])
         if self._minimal:
             mon_status = self._partial_dict(mon_status, ['monmap', 'quorum'])
+            mon_status['monmap'] = self._partial_dict(
+                mon_status['monmap'], ['mons']
+            )
             mon_status['monmap']['mons'] = [{}] * \
                 len(mon_status['monmap']['mons'])
         return mon_status
