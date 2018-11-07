@@ -4296,16 +4296,18 @@ void PrimaryLogPG::do_backfill_remove(OpRequestRef op)
 
   ObjectStore::Transaction t;
   for (auto& p : m->ls) {
-    struct stat st;
-    int r = osd->store->stat(ch, ghobject_t(p.first, ghobject_t::NO_GEN,
-                             pg_whoami.shard) , &st);
-    if (r == 0) {
-      sub_local_num_bytes(st.st_size);
-      int chunks = 1;
-      sub_num_bytes(st.st_size * chunks);
-      dout(10) << __func__ << " " << ghobject_t(p.first, ghobject_t::NO_GEN, pg_whoami.shard)
-               << " sub actual data by " << st.st_size
-               << dendl;
+    if (is_remote_backfilling()) {
+      struct stat st;
+      int r = osd->store->stat(ch, ghobject_t(p.first, ghobject_t::NO_GEN,
+                               pg_whoami.shard) , &st);
+      if (r == 0) {
+        sub_local_num_bytes(st.st_size);
+        int chunks = 1;
+        sub_num_bytes(st.st_size * chunks);
+        dout(10) << __func__ << " " << ghobject_t(p.first, ghobject_t::NO_GEN, pg_whoami.shard)
+                 << " sub actual data by " << st.st_size
+                 << dendl;
+      }
     }
     remove_snap_mapped_object(t, p.first);
   }
