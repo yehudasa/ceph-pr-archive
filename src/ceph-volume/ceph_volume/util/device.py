@@ -97,6 +97,10 @@ class Device(object):
         return self.path == other.path
 
     def _parse(self):
+        if not sys_info.devices:
+            sys_info.devices = disk.get_devices()
+        self.sys_api = sys_info.devices.get(self.abspath, {})
+
         # start with lvm since it can use an absolute or relative path
         lv = lvm.get_lv_from_argument(self.path)
         if lv:
@@ -112,10 +116,6 @@ class Device(object):
             # always check is this is an lvm member
             if device_type in ['part', 'disk']:
                 self._set_lvm_membership()
-
-        if not sys_info.devices:
-            sys_info.devices = disk.get_devices()
-        self.sys_api = sys_info.devices.get(self.abspath, {})
 
         self.ceph_disk = CephDiskDevice(self)
 
@@ -159,24 +159,25 @@ class Device(object):
 
     def _set_lvm_membership(self):
         if self._is_lvm_member is None:
-            # check if there was a pv created with the
-            # name of device
-            pvs = lvm.PVolumes()
-            pvs.filter(pv_name=self.abspath)
-            if not pvs:
-                self._is_lvm_member = False
-                return self._is_lvm_member
-            has_vgs = [pv.vg_name for pv in pvs if pv.vg_name]
-            if has_vgs:
-                # a pv can only be in one vg, so this should be safe
-                self.vg_name = has_vgs[0]
-                self._is_lvm_member = True
-                self.pvs_api = pvs
-                for pv in pvs:
-                    if pv.vg_name and pv.lv_uuid:
-                        lv = lvm.get_lv(vg_name=pv.vg_name, lv_uuid=pv.lv_uuid)
-                        if lv:
-                            self.lvs.append(lv)
+            for path in self._get_pv_paths():
+                # check if there was a pv created with the
+                # name of device
+                pvs = lvm.PVolumes()
+                pvs.filter(pv_name=path)
+                if not pvs:
+                    self._is_lvm_member = False
+                    return self._is_lvm_member
+                has_vgs = [pv.vg_name for pv in pvs if pv.vg_name]
+                if has_vgs:
+                    # a pv can only be in one vg, so this should be safe
+                    self.vg_name = has_vgs[0]
+                    self._is_lvm_member = True
+                    self.pvs_api = pvs
+                    for pv in pvs:
+                        if pv.vg_name and pv.lv_uuid:
+                            lv = lvm.get_lv(vg_name=pv.vg_name, lv_uuid=pv.lv_uuid)
+                            if lv:
+                                self.lvs.append(lv)
             else:
                 # this is contentious, if a PV is recognized by LVM but has no
                 # VGs, should we consider it as part of LVM? We choose not to
@@ -184,6 +185,18 @@ class Device(object):
                 self._is_lvm_member = False
 
         return self._is_lvm_member
+
+    def _get_pv_paths(self):
+        """
+        For block devices LVM can reside on the raw block device or on a
+        partition. Return a list of paths to be checked for a pv.
+        """
+        paths = [self.abspath]
+        path_comp = self.abspath.split('/')
+        for part in self.sys_api.get('partitions', {}).keys():
+            path_comp[-1] = part
+            paths.append('/'.join(path_comp))
+        return paths
 
     @property
     def exists(self):
