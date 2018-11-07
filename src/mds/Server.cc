@@ -1777,6 +1777,11 @@ void Server::handle_client_request(const MClientRequest::const_ref &req)
 	       session->is_closing() ||
 	       session->is_killing()) {
       dout(5) << "session closed|closing|killing, dropping" << dendl;
+      if (session->is_closed()) {
+	dout(1) << "send SESSION_CLOSE to client,so that it can reopen session" << dendl;
+	mds->send_message_client(MClientSession::create(CEPH_SESSION_CLOSE), session);
+	return;
+      }
       session = NULL;
     }
     if (!session) {
