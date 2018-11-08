@@ -1,0 +1,1 @@
+rgw: fix bucket_index::cancel , bs is wild pointer cleanup needs-qa rgw wip-jcollin-testing
