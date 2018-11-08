@@ -1,0 +1,1 @@
+rgw: s3: awsv4 drop special handling for x-amz-credential bug fix documentation needs-qa rgw
