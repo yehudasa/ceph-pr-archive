@@ -1,0 +1,1 @@
+rgw: Minor fixes to AssumeRole for boto compliance. needs-qa rgw
