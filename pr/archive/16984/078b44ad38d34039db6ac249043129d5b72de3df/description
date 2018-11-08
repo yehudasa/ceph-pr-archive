@@ -1,0 +1,1 @@
+rgw: fix opslog operation field as per Amazon s3 bug fix needs-qa rgw
