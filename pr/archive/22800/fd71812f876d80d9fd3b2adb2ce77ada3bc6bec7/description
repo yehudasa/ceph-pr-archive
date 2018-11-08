@@ -1,0 +1,1 @@
+cmake: allow setting of the CTest timeout during building. build/ops
