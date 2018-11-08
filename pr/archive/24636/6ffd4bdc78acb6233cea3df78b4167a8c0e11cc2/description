@@ -1,0 +1,1 @@
+denc: slightly optimize container_base::bound_encode. cleanup common
