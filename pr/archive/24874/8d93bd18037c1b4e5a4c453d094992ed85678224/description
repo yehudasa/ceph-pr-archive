@@ -1,0 +1,1 @@
+os/filestore: include journal in get_devices() result bug fix core
