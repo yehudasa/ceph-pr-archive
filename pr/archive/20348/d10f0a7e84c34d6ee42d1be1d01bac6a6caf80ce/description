@@ -1,0 +1,1 @@
+rgw: s3 copy object return 'x-amz-copy-source-version-id' and 'x-amz-version-id' bug fix rgw
