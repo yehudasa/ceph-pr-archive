@@ -1,0 +1,1 @@
+mimic: core: objecter cannot resend split-dropped op when racing with con reset core
