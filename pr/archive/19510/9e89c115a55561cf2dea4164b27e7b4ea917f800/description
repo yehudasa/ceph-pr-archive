@@ -1,0 +1,1 @@
+rgw: remove useless get_multipart_info invoke in RGWAbortMultipart::e… needs-review rgw stale
