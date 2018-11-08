@@ -1,0 +1,1 @@
+rgw: fix slo/dlo obj's end_ofs bug fix needs-qa rgw
