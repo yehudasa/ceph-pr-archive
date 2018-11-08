@@ -1,0 +1,1 @@
+rgw: TempURL should not allow PUTs with the X-Object-Manifest. bug fix needs-qa rgw
