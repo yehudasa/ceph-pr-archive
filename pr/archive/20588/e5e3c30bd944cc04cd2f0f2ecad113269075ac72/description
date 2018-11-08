@@ -1,0 +1,1 @@
+rgw: guard against racing writes head object from null version to ver… needs-review rgw stale
