@@ -1,0 +1,1 @@
+mgr: race between daemon state and service map in 'service status' bug fix mgr
