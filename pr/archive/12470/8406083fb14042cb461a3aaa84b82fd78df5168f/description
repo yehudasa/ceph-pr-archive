@@ -1,0 +1,1 @@
+rgw: dump s3_code as the Code response element in RGWDeleteMultiObj_ObjStore_S3 bug fix needs-qa rgw
