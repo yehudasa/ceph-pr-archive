@@ -1,0 +1,1 @@
+mimic: core: FAILED assert(osdmap_manifest.pinned.empty()) in OSDMonitor::prune_init() core
