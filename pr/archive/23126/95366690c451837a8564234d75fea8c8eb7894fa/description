@@ -1,0 +1,1 @@
+config: drop config_proxy::lock when invoking config observer bug fix core
