@@ -1,0 +1,1 @@
+common: encode for std::list<T> doesn't use the costly bl::copy_in() anymore. DNM cleanup common performance
