@@ -1,0 +1,1 @@
+ceph-volume: fix permissions of /etc/ceph/osd/*.json files ceph-volume needs-review
