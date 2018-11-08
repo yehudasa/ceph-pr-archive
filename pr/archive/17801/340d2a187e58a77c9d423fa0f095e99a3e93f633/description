@@ -1,0 +1,1 @@
+rgw:add the missing response headers when using KMS encryption. rgw stale
