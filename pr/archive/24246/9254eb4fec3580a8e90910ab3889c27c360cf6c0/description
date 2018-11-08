@@ -1,0 +1,1 @@
+jewel: test/librbd: not valid to have different parents between image snapshots rbd tests
