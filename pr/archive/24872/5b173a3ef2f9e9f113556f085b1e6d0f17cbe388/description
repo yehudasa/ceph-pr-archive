@@ -1,0 +1,1 @@
+luminous: osdc: reduce ObjectCacher's memory fragments bug fix cephfs luminous-batch-1 needs-qa rbd
