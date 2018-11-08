@@ -1,0 +1,1 @@
+luminous: qa/tasks/qemu: use unique clone directory to avoid race with workunit luminous-batch-1 rbd tests
