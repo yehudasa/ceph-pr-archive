@@ -1,0 +1,1 @@
+rgw: Make cerr message format as 'ERROR: '&'WARNING: '. cleanup rgw stale
