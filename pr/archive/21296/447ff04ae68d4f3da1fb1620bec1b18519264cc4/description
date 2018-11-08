@@ -1,0 +1,1 @@
+msg/async: reset fd to -1 after closing it bug fix core needs-review
