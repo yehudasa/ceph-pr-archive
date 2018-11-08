@@ -1,0 +1,1 @@
+fixed bug in PerfCounters::perf_counter_data_any_d::read_avg function bug fix common
