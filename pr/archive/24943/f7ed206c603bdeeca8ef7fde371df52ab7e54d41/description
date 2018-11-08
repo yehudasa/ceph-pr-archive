@@ -1,0 +1,1 @@
+librados: support copy-less writes in librados C API
