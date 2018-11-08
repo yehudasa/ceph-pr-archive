@@ -1,0 +1,1 @@
+rgw: multisite: fix new namesake-file sync fail when disable versioning bug fix rgw stale
