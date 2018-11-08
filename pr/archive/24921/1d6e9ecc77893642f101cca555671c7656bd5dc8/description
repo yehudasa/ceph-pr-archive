@@ -1,0 +1,1 @@
+luminous: cmake: link unittest_compression against gtest bug fix build/ops luminous-batch-1 needs-qa tests
