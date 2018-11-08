@@ -1,0 +1,1 @@
+rgw: fix a bug the owner should delete objects in the container bug fix rgw stale
