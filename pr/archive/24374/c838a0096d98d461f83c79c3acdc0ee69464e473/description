@@ -1,0 +1,1 @@
+luminous: common: (mon) command sanitization accepts floats when Int type is defined resulting in exception fault in ceph-mon bug fix core
