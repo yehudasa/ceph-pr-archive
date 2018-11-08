@@ -1,0 +1,1 @@
+rgw: swift: fix a bug object owner should not be able to handle the obj without container permission bug fix rgw stale
