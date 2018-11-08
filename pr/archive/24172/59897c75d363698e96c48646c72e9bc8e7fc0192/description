@@ -1,0 +1,1 @@
+client: fix fuse client hang because its pipe to mds is not ok cephfs
