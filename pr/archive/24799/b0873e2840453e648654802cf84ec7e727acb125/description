@@ -1,0 +1,1 @@
+mgr/DaemonServer: add js-output for "ceph osd safe-to-destroy" mgr needs-qa
