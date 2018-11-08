@@ -1,0 +1,1 @@
+rgw: fix ver location owner is not consistent, the object cannot be able to delete bug fix rgw stale
