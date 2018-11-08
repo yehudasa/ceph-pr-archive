@@ -1,0 +1,1 @@
+rgw: remove repetitive conditional statement in RGWHandler_REST_Obj_S3 rgw
