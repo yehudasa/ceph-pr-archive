@@ -1,0 +1,1 @@
+rgw: Fix for buffer overflow in STS op_post(). needs-qa rgw wip-cbodley-testing
