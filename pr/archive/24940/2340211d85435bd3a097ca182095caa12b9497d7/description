@@ -1,0 +1,1 @@
+client: support getfattr ceph.dir.pin extended attribute cephfs
