@@ -1,0 +1,1 @@
+common: kill the bl::last_p member. Use explicit hint passing instead. common needs-review performance
