@@ -1,0 +1,1 @@
+mimic: rbd: [rbd-mirror] forced promotion after killing remote cluster results in stuck state rbd
