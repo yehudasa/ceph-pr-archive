@@ -1,0 +1,1 @@
+qa/tasks/ceph: ignore failure when chown ceph:ceph bug fix core needs-qa tests
