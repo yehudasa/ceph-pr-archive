@@ -1,0 +1,1 @@
+rgw: fix crash in system_obj_set_attrs when got SIGHUP bug fix rgw stale
