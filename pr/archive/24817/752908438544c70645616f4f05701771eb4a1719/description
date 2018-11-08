@@ -1,0 +1,1 @@
+bluestore/NVMEDevice.cc: fix ceph_assert() when enable SPDK with 64KB kernel page size bluestore
