@@ -1,0 +1,1 @@
+common, osd: kill OpQueue::length() to minimize inter-core traffic. cleanup common core
