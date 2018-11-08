@@ -1,0 +1,1 @@
+osd: use the sum of max allowed backfill and recovery as max_allowed bug fix core
