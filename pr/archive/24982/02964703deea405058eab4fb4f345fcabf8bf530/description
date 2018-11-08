@@ -1,0 +1,1 @@
+mgr/prometheus: Adjusted standby manager prometheus module behavior to redirect to active mgr
