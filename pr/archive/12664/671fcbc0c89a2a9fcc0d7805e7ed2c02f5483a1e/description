@@ -1,0 +1,1 @@
+rgw:when call the multiparts upload API TransferManager.upload() by s3 java sdk , got the SignatureDoesNotMatch except bug fix rgw stale
