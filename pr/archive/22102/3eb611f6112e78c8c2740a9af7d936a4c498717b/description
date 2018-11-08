@@ -1,0 +1,1 @@
+rgw-multisite: fix segmentation fault when use different rgw_md_log_max_shards among zones bug fix rgw stale
