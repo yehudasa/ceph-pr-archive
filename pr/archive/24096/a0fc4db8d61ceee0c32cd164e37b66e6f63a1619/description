@@ -1,0 +1,1 @@
+rgw: fix response of lifecycle when the request contains an Origin he… bug fix rgw
