@@ -1,0 +1,1 @@
+luminous: qa/suites/fs: use bigger cinder volumes cephfs luminous-batch-1 needs-qa
