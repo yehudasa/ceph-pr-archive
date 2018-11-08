@@ -1,0 +1,1 @@
+rgw: TempURL returns proper error code in the case of auth failure. bug fix rgw
