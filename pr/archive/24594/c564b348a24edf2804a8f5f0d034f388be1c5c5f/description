@@ -1,0 +1,1 @@
+rgw: reshard add: fail correctly on a non existant bucket bug fix needs-qa rgw wip-cbodley-testing
