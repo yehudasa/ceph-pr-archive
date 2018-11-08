@@ -1,0 +1,1 @@
+common, log: Extended message on death to include register values and location of instruction pointer. common needs-review
