@@ -1,0 +1,1 @@
+rgw: move keystone secrets from ceph.conf to files cleanup needs-qa rgw wip-cbodley-testing
