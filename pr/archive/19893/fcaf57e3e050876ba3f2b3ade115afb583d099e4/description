@@ -1,0 +1,1 @@
+osd/ECBackend: use local read to reduce async io path core performance
