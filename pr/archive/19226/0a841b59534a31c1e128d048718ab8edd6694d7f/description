@@ -1,0 +1,1 @@
+osd/ECBackend.cc: prevent a assert when decode buffer is empty bug fix core
