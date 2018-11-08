@@ -1,0 +1,1 @@
+luminous: auth: ceph auth add does not sanity-check caps core luminous-batch-1 needs-qa
