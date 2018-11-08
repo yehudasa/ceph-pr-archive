@@ -1,0 +1,1 @@
+mgr: prometheus: added bluestore db and wal devices to ceph_disk_occupation metric. mgr needs-review
