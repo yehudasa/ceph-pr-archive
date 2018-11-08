@@ -1,0 +1,1 @@
+crushtool: add --reclassify operation to convert legacy crush maps to use device classes core feature needs-review
