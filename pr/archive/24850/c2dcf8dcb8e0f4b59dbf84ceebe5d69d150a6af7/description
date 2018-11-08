@@ -1,0 +1,1 @@
+common/admin_socket: remove support for the old protocol __be32 cleanup common needs-qa wip-kefu-testing
