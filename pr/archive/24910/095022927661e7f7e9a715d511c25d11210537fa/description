@@ -1,0 +1,1 @@
+mimic: rgw: cls_user_remove_bucket does not write the modified cls_user_stats rgw
