@@ -1,0 +1,1 @@
+jewel:rgw: return x-amz-version-id: null when delete obj in versioning bug fix rgw
