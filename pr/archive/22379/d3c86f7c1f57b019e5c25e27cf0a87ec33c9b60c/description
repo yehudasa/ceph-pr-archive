@@ -1,0 +1,1 @@
+ceph-objectstore-tool: make 'rm-omap' command support remove many keys feature tools
