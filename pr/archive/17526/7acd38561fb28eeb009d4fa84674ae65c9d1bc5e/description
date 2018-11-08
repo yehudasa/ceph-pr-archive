@@ -1,0 +1,1 @@
+qa/tasks/ceph_manager: avoid test_map_discontinuity stall with too few in osds bug fix core needs-qa tests
