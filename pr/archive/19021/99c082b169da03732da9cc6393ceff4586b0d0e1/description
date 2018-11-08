@@ -1,0 +1,1 @@
+rgw: fix the two files with the same in the bucket when open/close version rgw
