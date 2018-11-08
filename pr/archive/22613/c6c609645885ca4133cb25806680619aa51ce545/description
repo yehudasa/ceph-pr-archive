@@ -1,0 +1,1 @@
+rgw: Copying object data should generate new tail tag for the new object. bug fix needs-qa rgw
