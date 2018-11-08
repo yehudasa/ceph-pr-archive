@@ -1,0 +1,1 @@
+jewel: cls/rgw: gc_iterate_entries segfaults on invalid iterator bug fix needs-qa rgw
