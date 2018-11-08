@@ -1,0 +1,1 @@
+rgw: http client: print curl error messages during curl failures needs-qa rgw
