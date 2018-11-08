@@ -1,0 +1,1 @@
+rgw: when listing s3 objects, encode additional response elements if encoding-type=url rgw
