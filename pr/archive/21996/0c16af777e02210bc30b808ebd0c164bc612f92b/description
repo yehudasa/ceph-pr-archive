@@ -1,0 +1,1 @@
+librados: Add a librbd command to cancel all aio operations. core needs-review
