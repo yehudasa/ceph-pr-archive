@@ -1,0 +1,1 @@
+rgw: return MalformedXML when xml contain extra XMLObj Element needs-review rgw stale
