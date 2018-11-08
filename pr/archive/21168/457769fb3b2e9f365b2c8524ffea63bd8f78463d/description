@@ -1,0 +1,1 @@
+mon: do not use 'osd crush set' to set crushmap from input file mon stale
