@@ -1,0 +1,1 @@
+mon: add "osd setall" and "osd unsetall" commands feature mon needs-review needs-test
